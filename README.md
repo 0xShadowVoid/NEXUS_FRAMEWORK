@@ -68,9 +68,10 @@ check it at runtime with `python nexus.py --version`.
 
 ## Contents
 
+0. [Beginner's guide (ELI5 — read this if new or returning)](docs/BEGINNER_GUIDE.md)
 1. [Install](#1-install) · 2. [Configure](#2-configure) · 3. [AI provider keys — multi-key failover](#3-ai-provider-keys--multi-key-failover) ·
 4. [Usage](#4-usage) · 5. [Architecture](#5-architecture) · 6. [Security boundary](#6-security-boundary-enforced-in-code) ·
-7. [Testing](#7-testing) · 8. [Troubleshooting](#8-troubleshooting) · 9. [License](#9-license)
+7. [Testing](#7-testing) · 8. [Troubleshooting](#8-troubleshooting) · 9. [License](#9-license) · [Examples & workflows](docs/EXAMPLES.md) · [Feature map](docs/FEATURE_MAP.md) · [Roadmap](docs/ROADMAP.md)
 
 ## 1. Install
 
