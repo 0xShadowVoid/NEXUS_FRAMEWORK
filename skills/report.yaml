@@ -1,0 +1,11 @@
+name: report
+description: Produce a submission-ready, proof-only report for a platform.
+prompt: |
+  Render the findings report in the target platform's format, including
+  endpoint, payload, proof, impact and repro steps. Strip cookies,
+  tokens and PII; cap evidence length. Never invent impact.
+tools: [reporter, sanitizer, exporter]
+guardrails:
+  - proof-only evidence
+  - platform-accurate severity mapping
+  - no sensitive data in output

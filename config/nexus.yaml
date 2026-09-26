@@ -1,0 +1,89 @@
+# NEXUS main configuration
+# ${VAR} values resolve from config/.keys.env then OS environment.
+
+scanning:
+  default_intensity: quick-scan
+  tool_timeout_seconds: 300
+  rate_limit_default: "50/minute"
+
+phases:
+  discover:
+    enabled: true
+    tools: [pegpon, bbot, meg, wappalyzer]
+  probe:
+    enabled: true
+    default_tools: [nuclei, dalfox]
+  hunt:
+    enabled: false                    # OFF by default
+    intensity: quick-scan
+    max_scans_per_day: 5
+    alert_on: [P1, P2]
+    vdp_strategy: light_scan
+    bb_strategy: quick-scan
+  control:
+    enabled: false                    # C2 bot off by default
+  scale:
+    enabled: false                    # scaffold only
+
+targets:
+  paypal.com:
+    intensity: full-scan
+    tools: [nuclei, dalfox, sqlmap]
+    rate_limit: "50/minute"
+  startup.com:
+    intensity: quick-scan
+    tools: [nuclei, dalfox]
+    rate_limit: "100/minute"
+
+schedules:
+  paypal_daily:
+    target: paypal.com
+    frequency: daily
+    time: "02:00"
+    intensity: full-scan
+
+webhooks:
+  discord:
+    findings: ${DISCORD_FINDINGS_WEBHOOK}
+    cve: ${DISCORD_CVE_WEBHOOK}
+    metrics: ${DISCORD_METRICS_WEBHOOK}
+  telegram:
+    bot_token: ${TELEGRAM_BOT_TOKEN}
+    chat_id: ${TELEGRAM_CHAT_ID}
+
+email:
+  smtp_host: ${SMTP_HOST}
+  smtp_port: ${SMTP_PORT}
+  smtp_user: ${SMTP_USER}
+  smtp_pass: ${SMTP_PASS}
+  from_addr: ${ALERT_EMAIL_FROM}
+  to_addrs: ${ALERT_EMAIL_TO}
+
+ai:
+  provider: openai            # openai | glm | deepseek | gemini | kimi | openrouter | custom
+  fallback_providers: [glm, deepseek, gemini, kimi, openrouter]   # tried in order
+  model: ""                   # empty = provider default
+  strong_model: ""            # used for chain reasoning / report writing
+  max_calls: 0                # per-run AI call budget (0 = unlimited)
+  base_url: ""                # optional override (or CUSTOM_BASE_URL / <PROVIDER>_BASE_URL)
+
+cve:
+  auto_update: true
+  frequency: daily
+  time: "02:00"
+  alert_severity: [critical, high]
+  script_delivery: [email, discord]
+  use_kev: true                # CISA known-exploited prioritisation
+  use_epss: true               # EPSS exploitation-probability scoring
+
+c2_bot:
+  enabled: true
+  use_same_webhook: true
+  channels: [discord, telegram]
+
+results:
+  base_dir: results
+  exports_dir: exports
+
+database:
+  path: nexus.db

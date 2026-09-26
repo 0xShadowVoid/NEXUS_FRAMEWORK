@@ -1,0 +1,10 @@
+# NEXUS Framework runtime dependencies (Python 3.11+)
+pyyaml>=6.0
+python-dotenv>=1.0
+requests>=2.31
+croniter>=2.0
+py7zr>=0.21
+
+# Development / testing
+pytest>=8.0
+pytest-cov>=4.0

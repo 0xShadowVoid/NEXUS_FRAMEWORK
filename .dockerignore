@@ -1,0 +1,15 @@
+__pycache__/
+.pytest_cache/
+logs/
+results/
+exports/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+config/.keys.env
+*.bak
+.git/
+.gitignore
+.venv/
+venv/

@@ -1,0 +1,58 @@
+# NEXUS methodology checklists
+# Each item maps to tools; coverage = item covered when any of its tools ran.
+
+methodologies:
+  web_app_checklist:
+    name: Web Application Security Checklist
+    sections:
+      - id: recon
+        title: Reconnaissance & Mapping
+        items:
+          - id: subdomain_enum
+            title: Subdomain enumeration
+            tools: [subfinder, assetfinder, findomain, chaos, github-subdomains]
+          - id: url_discovery
+            title: URL / endpoint discovery
+            tools: [waybackurls, gau, katana]
+          - id: content_discovery
+            title: Content discovery
+            tools: [ffuf]
+          - id: tech_fingerprint
+            title: Technology fingerprinting
+            tools: [nuclei]
+          - id: osint_dorking
+            title: Search-engine / GitHub dorking
+            tools: [dorker]
+      - id: injection
+        title: Injection Testing
+        items:
+          - id: xss
+            title: Cross-site scripting
+            tools: [dalfox, nuclei]
+          - id: sqli
+            title: SQL injection
+            tools: [sqlmap, ghauri]
+          - id: cmdi
+            title: Command injection
+            tools: [commix]
+          - id: lfi
+            title: Local file inclusion
+            tools: [lfihunt]
+      - id: access
+        title: Access Control
+        items:
+          - id: bypass_403
+            title: 401/403 bypass testing
+            tools: [nomore403]
+          - id: jwt
+            title: JWT analysis
+            tools: [jwt-tool]
+          - id: graphql
+            title: GraphQL misconfiguration
+            tools: [graphql-cop]
+      - id: cloud
+        title: Cloud Surface
+        items:
+          - id: cloud_enum
+            title: Cloud asset enumeration
+            tools: [cloudenum, s3scanner]

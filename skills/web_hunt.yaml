@@ -1,0 +1,11 @@
+name: web_hunt
+description: Test a discovered surface for web vulnerabilities (detection + PoC).
+prompt: |
+  Select templates by detected tech, run detection-only scans
+  (XSS, SQLi, LFI, SSRF, bypass, GraphQL, JWT), and capture proof.
+  Heavy tools only on gated endpoints. No extraction, no destruction.
+tools: [nuclei, dalfox, sqlmap, commix, ghauri, lfihunt, graphql-cop, nomore403]
+guardrails:
+  - detection + proof of concept only
+  - heavy tools gated to auth/bypass candidates
+  - payload guard enforced

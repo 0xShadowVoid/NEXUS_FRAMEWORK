@@ -1,0 +1,20 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run offline test suite (with coverage)
+        run: python -m pytest tests -q --cov=lib --cov=core --cov-report=term-missing
+      - name: Self secret-scan (block committed secrets)
+        run: python nexus.py self-scan

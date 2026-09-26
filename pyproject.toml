@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nexus-framework"
+version = "2.0.0"
+description = "NEXUS — Unified Bug Bounty Automation Framework"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Custom permission-based (see LICENSE)" }
+dependencies = [
+    "PyYAML>=6.0",
+    "python-dotenv>=1.0",
+    "requests>=2.31",
+    "croniter>=2.0",
+    "py7zr>=0.21",
+]
+
+[project.optional-dependencies]
+c2 = ["discord.py>=2.3", "python-telegram-bot>=20"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+nexus = "nexus:main"
+
+[tool.setuptools]
+packages = [
+    "lib",
+    "core",
+    "phases",
+    "phases.discover",
+    "phases.probe",
+    "phases.analyze",
+    "phases.hunt",
+    "phases.control",
+    "phases.scale",
+    "phases.verify",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

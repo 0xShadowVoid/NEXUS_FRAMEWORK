@@ -1,0 +1,10 @@
+name: recon
+description: Map the attack surface for a target (subdomains, URLs, tech, OSINT).
+prompt: |
+  Enumerate subdomains and URLs, fingerprint technology, and run
+  multi-engine dorking. Never leave the authorized scope. Stop at
+  detection — collect surface, do not test vulnerabilities here.
+tools: [subfinder, assetfinder, httpx, katana, gau, waybackurls, dorker]
+guardrails:
+  - scope-validated target only
+  - read-only enumeration

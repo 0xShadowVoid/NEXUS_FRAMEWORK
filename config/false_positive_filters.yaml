@@ -1,0 +1,45 @@
+# NEXUS false-positive filter rules
+# strictness: aggressive | conservative | custom
+#  - aggressive: enforce confidence threshold strictly + drop auto_filter patterns
+#  - conservative: only drop clear auto_filter patterns; below-threshold kept as POTENTIAL
+
+filters:
+  xss:
+    strictness: aggressive
+    confidence_threshold: 90
+    auto_filter:
+      - "HTML entity &lt;script&gt;"
+      - "Displayed as plain text"
+  sqli:
+    strictness: conservative
+    confidence_threshold: 70
+    auto_filter:
+      - "UNION without data extraction"
+  idor:
+    strictness: conservative
+    confidence_threshold: 85
+    auto_filter: []
+  rce:
+    strictness: aggressive
+    confidence_threshold: 90
+    auto_filter:
+      - "Echoed payload without execution evidence"
+  ssrf:
+    strictness: conservative
+    confidence_threshold: 75
+    auto_filter: []
+  lfi:
+    strictness: conservative
+    confidence_threshold: 80
+    auto_filter:
+      - "Traversal reflected but no file content"
+  redirect:
+    strictness: aggressive
+    confidence_threshold: 85
+    auto_filter:
+      - "Relative redirect to same origin"
+  info:
+    strictness: conservative
+    confidence_threshold: 60
+    auto_filter:
+      - "Standard framework debug page without sensitive data"

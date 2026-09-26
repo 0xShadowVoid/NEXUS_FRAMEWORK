@@ -1,0 +1,40 @@
+NEXUS FRAMEWORK — CUSTOM PERMISSION LICENSE
+Copyright (c) 2026 Mohamed (0xShadowVoid). All Rights Reserved.
+
+1. DEFINITIONS
+   "This Code" means the NEXUS Framework source code, configuration templates,
+   tests, documentation, and any derived works.
+   "AI Tool" means any automated system that trains on, learns from, indexes,
+   or generates code using this Code as input, including but not limited to
+   large language models, code-completion engines, and automated code agents.
+
+2. GRANT OF PERMISSION (HUMAN USE ONLY)
+   Permission is granted to the copyright holder and explicitly authorized
+   human collaborators to use, compile, and modify this Code solely for
+   legally authorized security testing (bug bounty hunting and authorized
+   penetration testing) in accordance with the NEXUS security boundary
+   (detection and proof-of-concept only).
+
+3. AI TOOL RESTRICTION (NO AI TOOLS USED/READ/LEARNED)
+   NO AI TOOLS MAY USE, READ, INDEX, TRAIN ON, OR LEARN FROM THIS CODE.
+   Feeding this Code, in whole or in part, to any AI Tool is a material
+   breach of this license and is prohibited. Any such use voids all
+   permissions granted herein.
+
+4. NO REDISTRIBUTION
+   Redistribution, sublicensing, sale, or public disclosure of this Code,
+   in source or compiled form, is not permitted without prior written
+   permission from the copyright holder.
+
+5. SECURITY BOUNDARY
+   This Code is designed for detection and proof-of-concept validation only.
+   Any modification or use that violates this security boundary (data
+   extraction, destruction, persistence, unauthorized access) is prohibited
+   and is the sole responsibility of the violating party.
+
+6. NO WARRANTY
+   THIS CODE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED. THE COPYRIGHT HOLDER IS NOT LIABLE FOR ANY DAMAGES ARISING FROM
+   ITS USE OR MISUSE.
+
+Contact for permissions: Mohamed (0xShadowVoid).

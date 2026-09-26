@@ -1,0 +1,13 @@
+services:
+  nexus:
+    build: .
+    image: nexus-framework:1.1.0
+    volumes:
+      - ./config:/nexus/config          # .keys.env + nexus.yaml live here
+      - ./results:/nexus/results
+      - ./logs:/nexus/logs
+      - ./exports:/nexus/exports
+    environment:
+      - PYTHONUNBUFFERED=1
+    # Example: run a quick scan. Override the command as needed.
+    command: ["doctor"]

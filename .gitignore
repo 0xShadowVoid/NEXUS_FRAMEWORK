@@ -1,0 +1,60 @@
+# ============================================================
+# NEXUS Framework — .gitignore
+# ============================================================
+
+# --- Secrets: NEVER commit ---
+config/.keys.env
+*.keys.env
+*.env
+!*.env.example
+*.bak
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- Runtime artifacts ---
+logs/
+results/
+exports/
+nexus.db
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# --- Downloaded / generated content ---
+wordlists/seclists/
+scripts/cve_pocs/*
+!scripts/cve_pocs/
+!scripts/cve_pocs/README.md
+templates/nuclei-custom/*
+!templates/nuclei-custom/
+!templates/nuclei-custom/README.md
+
+# --- OS / editors / tools ---
+Thumbs.db
+Desktop.ini
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- Local notes (keep spec docs, ignore scratch) ---
+*.local.md
+TODO.local.md
