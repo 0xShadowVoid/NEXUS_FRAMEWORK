@@ -13,10 +13,21 @@ from typing import Any
 import requests
 
 from lib.logger import get_logger
+from lib.ssrf_guard import is_safe_url
+from lib.versioning import (
+    VersionRange,
+    aggregate_status,
+    cpe_fields,
+    name_tokens,
+    parse_version,
+)
 
 logger = get_logger("cve_fetcher")
 
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+
+# Fixed public destination: explicit SSRF guard allowlist (Pass 3B).
+_SSRF_ALLOW = {"services.nvd.nist.gov"}
 _TIMEOUT = (10, 30)
 _MAX_RESULTS_DEFAULT = 500
 
@@ -76,6 +87,10 @@ class CVEFetcher:
             "pubEndDate": _iso_nvd(now),
             "resultsPerPage": min(max_results, 2000),
         }
+        safe, reason = is_safe_url(NVD_API_URL, allow=_SSRF_ALLOW)
+        if not safe:
+            logger.warning("ssrf guard blocked %s: %s", NVD_API_URL, reason)
+            return []
         try:
             resp = self.session.get(
                 NVD_API_URL, params=params, headers=self._headers(), timeout=_TIMEOUT
@@ -108,6 +123,8 @@ class CVEFetcher:
                 "description": description,
                 "published": cve.get("published", ""),
                 "affected_products": products,
+                # Pass 3C: version-aware CPE details (vendor/product/version/range).
+                "affected_details": self._affected_details(cve),
             })
         return out
 
@@ -153,30 +170,195 @@ class CVEFetcher:
                             products.add(f"{vendor}:{product}")
         return sorted(products)
 
+    @staticmethod
+    def _affected_details(cve: dict[str, Any]) -> list[dict[str, Any]]:
+        """Version-aware per-CPE detail entries (Pass 3C).
 
-def match_tech(cves: list[dict[str, Any]], tech_stack: list[str] | dict[str, Any]) -> list[tuple[dict[str, Any], list[str]]]:
-    """Match CVE affected products against a target's tech stack.
+        Each entry: ``{vendor, product, version, range: VersionRange}``.
+        Only CPEs marked vulnerable (default true) are included.
+        """
+        details: list[dict[str, Any]] = []
+        for conf in cve.get("configurations") or []:
+            for node in (conf.get("nodes") or []):
+                for cpe_match in (node.get("cpeMatch") or []):
+                    if cpe_match.get("vulnerable") is False:
+                        continue
+                    cpe = str(cpe_match.get("criteria", "") or "")
+                    if not cpe:
+                        continue
+                    fields = cpe_fields(cpe)
+                    details.append({
+                        "vendor": fields.get("vendor", ""),
+                        "product": fields.get("product", ""),
+                        "version": fields.get("version", ""),
+                        "range": VersionRange.from_cpe_match(cpe_match),
+                    })
+        return details
 
-    *tech_stack* is a list of tech names (e.g. ``["WordPress 6.0", "Apache"]``)
-    or a Wappalyzer-style dict ``{"WordPress": "6.0", ...}``.
-    Returns ``(cve, matched_techs)`` pairs.
+
+def _tech_pairs(tech_stack: list[str] | dict[str, Any] | None) -> list[tuple[str, str]]:
+    """Normalize a tech stack into ``[(name, version), ...]`` pairs.
+
+    Accepts a Wappalyzer-style dict (``{"WordPress": "6.0"}``) or a list of
+    ``"Name Version"`` strings (``["WordPress 6.0", "Apache"]``).
     """
     if isinstance(tech_stack, dict):
-        techs = [f"{name} {ver}".strip() for name, ver in tech_stack.items()]
-    else:
-        techs = list(tech_stack or [])
+        return [(str(name), str(ver or "")) for name, ver in tech_stack.items()]
+    pairs: list[tuple[str, str]] = []
+    for item in (tech_stack or []):
+        text = str(item or "").strip()
+        if not text:
+            continue
+        name, _, version = text.rpartition(" ")
+        if name and version and any(ch.isdigit() for ch in version):
+            pairs.append((name, version))
+        else:
+            pairs.append((text, ""))
+    return pairs
 
+
+def _tech_label(name: str, version: str) -> str:
+    return f"{name} {version}".strip()
+
+
+def _match_strength(tech_name: str, detail: dict[str, Any]) -> str:
+    """Classify name-match strength against one CPE detail entry.
+
+    ``strong`` — product confidently the same product: exact token equality
+    or all product tokens contained in the tech name tokens.
+    ``weak``  — vendor/partial overlap only (name-level candidate).
+    ``""``    — no overlap (CPE mismatch).
+    """
+    t = name_tokens(tech_name)
+    if not t:
+        return ""
+    product = str(detail.get("product", "") or "")
+    vendor = str(detail.get("vendor", "") or "")
+    p = name_tokens(product)
+    if not p:
+        return ""
+    if t == p or p <= t:
+        return "strong"
+    if vendor and vendor in t:
+        return "weak"
+    if t & p:
+        return "weak"
+    return ""
+
+
+def _evaluate_entry(tech_version: str, detail: dict[str, Any]) -> str:
+    """Per-entry verdict for a strong match.
+
+    Returns ``affected`` | ``unaffected`` | ``unknown`` | ``candidate``.
+    A bare listed version with no numeric bounds never proves a different
+    version safe — a mismatch downgrades to ``candidate`` (never excluded).
+    """
+    if not tech_version:
+        return "candidate"
+    if parse_version(tech_version) is None:
+        return "unknown"
+    vrange = detail.get("range")
+    verdict = vrange.evaluate(tech_version) if vrange is not None else "unknown"
+    if verdict == "unaffected":
+        has_bounds = bool(
+            getattr(vrange, "start_including", "")
+            or getattr(vrange, "start_excluding", "")
+            or getattr(vrange, "end_including", "")
+            or getattr(vrange, "end_excluding", "")
+        )
+        return "unaffected" if has_bounds else "candidate"
+    return verdict
+
+
+def _legacy_product_match(tech_name: str, products: list[str]) -> bool:
+    """Historical name heuristic for CVEs with no CPE detail entries."""
+    t = str(tech_name or "").lower().strip()
+    if not t:
+        return False
+    for product in products or []:
+        p_l = str(product).lower()
+        if t in p_l or p_l in t or p_l.split(":")[-1] in t:
+            return True
+    return False
+
+
+def match_tech_ex(
+    cves: list[dict[str, Any]],
+    tech_stack: list[str] | dict[str, Any] | None,
+) -> tuple[list[tuple[dict[str, Any], list[str]]], dict[str, int]]:
+    """Version-aware CVE ↔ tech-stack matching (Pass 3C).
+
+    Returns ``(matches, report)``. *matches* keeps the historical
+    ``(cve, matched_techs)`` shape; *report* counts ``affected`` /
+    ``unknown`` / ``candidate`` matches plus definitively-``unaffected``
+    CVEs that were excluded.
+
+    Each matched CVE dict gains ``applicability`` and ``version_evidence``.
+    Name-only matches stay ``candidate`` — never presented as confirmed.
+    """
+    pairs = _tech_pairs(tech_stack)
     matches: list[tuple[dict[str, Any], list[str]]] = []
-    for cve in cves:
+    report = {"affected": 0, "unknown": 0, "candidate": 0, "unaffected": 0}
+
+    for cve in cves or []:
+        details = cve.get("affected_details") or []
+        verdicts: list[str] = []
         matched: list[str] = []
-        for tech in techs:
-            tech_l = str(tech).lower()
-            tech_name = tech_l.split()[0] if tech_l.split() else tech_l
-            for product in cve.get("affected_products", []):
-                p_l = product.lower()
-                if tech_name and (tech_name in p_l or p_l in tech_l or p_l.split(":")[-1] in tech_l):
-                    matched.append(str(tech))
-                    break
-        if matched:
-            matches.append((cve, matched))
-    return matches
+        evidence: list[dict[str, Any]] = []
+
+        for tech_name, tech_version in pairs:
+            label = _tech_label(tech_name, tech_version)
+            tech_verdicts: list[str] = []
+            if not details:
+                if _legacy_product_match(tech_name, cve.get("affected_products") or []):
+                    tech_verdicts.append("candidate")
+                    evidence.append({
+                        "tech": label, "verdict": "candidate",
+                        "reason": "product-name match only (no CPE version data)",
+                    })
+            else:
+                for detail in details:
+                    strength = _match_strength(tech_name, detail)
+                    if not strength:
+                        continue
+                    verdict = (
+                        _evaluate_entry(tech_version, detail)
+                        if strength == "strong"
+                        else "candidate"
+                    )
+                    tech_verdicts.append(verdict)
+                    evidence.append({
+                        "tech": label,
+                        "vendor": detail.get("vendor", ""),
+                        "product": detail.get("product", ""),
+                        "detected_version": tech_version,
+                        "verdict": verdict,
+                        "match": strength,
+                    })
+            if tech_verdicts:
+                verdicts.append(aggregate_status(tech_verdicts))
+                matched.append(label)
+
+        if not verdicts:
+            continue
+        overall = aggregate_status(verdicts)
+        if overall == "unaffected":
+            report["unaffected"] += 1
+            continue
+        report[overall] = report.get(overall, 0) + 1
+        cve["applicability"] = overall
+        cve["version_evidence"] = evidence
+        matches.append((cve, matched))
+    return matches, report
+
+
+def match_tech(
+    cves: list[dict[str, Any]],
+    tech_stack: list[str] | dict[str, Any],
+) -> list[tuple[dict[str, Any], list[str]]]:
+    """Match CVE affected products against a target's tech stack.
+
+    Version-aware (Pass 3C): definitively-unaffected versions are excluded;
+    name-only matches remain candidates. Returns ``(cve, matched_techs)``.
+    """
+    return match_tech_ex(cves, tech_stack)[0]

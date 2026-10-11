@@ -35,6 +35,20 @@ COMMANDS = {
 CONFIRM_REQUIRED = {"remove-target", "remove-schedule", "stop"}
 
 
+def default_logs_handler(logs_path=None, max_lines: int = 20) -> str:
+    """Return the latest log lines (shared by the default C2 routers)."""
+    from lib.paths import LOGS_DIR
+
+    path = Path(logs_path) if logs_path else (LOGS_DIR / "nexus.log")
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as exc:
+        return f"log read error: {exc}"
+    if not lines:
+        return "(log empty)"
+    return "\n".join(lines[-int(max_lines):])
+
+
 @dataclass
 class CommandOutcome:
     """Result of one C2 command execution."""

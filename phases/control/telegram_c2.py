@@ -7,18 +7,21 @@ thread; unauthorized senders are rejected by the router.
 from __future__ import annotations
 
 import threading
-import time
 from typing import Any, Callable
 
 import requests
 
 from lib.logger import get_logger
+from lib.ssrf_guard import is_safe_url
 from phases.control.c2_commands import C2Router, default_logs_handler
 
 logger = get_logger("telegram_c2")
 
 _API_BASE = "https://api.telegram.org/bot{token}"
 _POLL_TIMEOUT = 25
+
+# Fixed, operator-independent destination: explicit SSRF guard allowlist (Pass 3B).
+_SSRF_ALLOW = {"api.telegram.org"}
 
 
 class TelegramC2:
@@ -33,15 +36,49 @@ class TelegramC2:
     def _send(self, text: str) -> bool:
         if not self.bot_token or not self.chat_id:
             return False
+        url = _API_BASE.format(token=self.bot_token) + "/sendMessage"
+        safe, reason = is_safe_url(url, allow=_SSRF_ALLOW)
+        if not safe:
+            logger.warning("ssrf guard blocked Telegram send: %s", reason)
+            return False
         try:
             resp = requests.post(
-                _API_BASE.format(token=self.bot_token) + "/sendMessage",
+                url,
                 json={"chat_id": self.chat_id, "text": text[:4000]},
                 timeout=(5, 15),
             )
             return resp.status_code == 200
         except requests.RequestException:
             return False
+
+    def _poll_once(self, offset: int) -> int:
+        """One getUpdates round trip; returns the next offset (unchanged on failure)."""
+        url = _API_BASE.format(token=self.bot_token) + "/getUpdates"
+        safe, reason = is_safe_url(url, allow=_SSRF_ALLOW)
+        if not safe:
+            logger.warning("ssrf guard blocked Telegram poll: %s", reason)
+            self._stop.wait(5)
+            return offset
+        try:
+            resp = requests.get(
+                url,
+                params={"timeout": _POLL_TIMEOUT, "offset": offset},
+                timeout=(5, _POLL_TIMEOUT + 10),
+            )
+            if resp.status_code != 200:
+                self._stop.wait(5)
+                return offset
+            for update in resp.json().get("result", []):
+                offset = update.get("update_id", 0) + 1
+                message = update.get("message") or {}
+                sender = str((message.get("from") or {}).get("id", ""))
+                text = str(message.get("text", ""))
+                outcome = self.router.handle(sender, text)
+                if text.startswith("/nexus"):
+                    self._send(f"{outcome.command}: {outcome.output}")
+        except (requests.RequestException, ValueError):
+            self._stop.wait(5)
+        return offset
 
     def start(self) -> dict[str, Any]:
         """Start the long-poll loop in a daemon thread."""
@@ -51,25 +88,7 @@ class TelegramC2:
         def loop() -> None:
             offset = 0
             while not self._stop.is_set():
-                try:
-                    resp = requests.get(
-                        _API_BASE.format(token=self.bot_token) + "/getUpdates",
-                        params={"timeout": _POLL_TIMEOUT, "offset": offset},
-                        timeout=(5, _POLL_TIMEOUT + 10),
-                    )
-                    if resp.status_code != 200:
-                        time.sleep(5)
-                        continue
-                    for update in resp.json().get("result", []):
-                        offset = update.get("update_id", 0) + 1
-                        message = update.get("message") or {}
-                        sender = str((message.get("from") or {}).get("id", ""))
-                        text = str(message.get("text", ""))
-                        outcome = self.router.handle(sender, text)
-                        if text.startswith("/nexus"):
-                            self._send(f"{outcome.command}: {outcome.output}")
-                except (requests.RequestException, ValueError):
-                    time.sleep(5)
+                offset = self._poll_once(offset)
 
         threading.Thread(target=loop, daemon=True, name="nexus-telegram-c2").start()
         return {"status": "running", "chat_id": self.chat_id}
@@ -79,15 +98,13 @@ class TelegramC2:
 
 
 def build_default_router(owner_id: str, logs_path=None) -> C2Router:
-    """Build a router with the default handler set."""
-    from pathlib import Path
-
-    handlers: dict[str, Callable[[str], str]] = {
-        "/nexus hunt": lambda target: f"scan started: {target}",
-        "/nexus stop": lambda _a: "stop requested",
-        "/nexus logs": lambda _a: default_logs_handler(logs_path),
-        "/nexus report": lambda _a: "latest report path: results/",
-        "/nexus status": lambda _a: "no running scans",
-        "/nexus cve-update": lambda _a: "cve update triggered",
+    """Build a router with the default handler set (standalone/stub use)."""
+    handlers: dict[str, Callable[[list[str]], str]] = {
+        "hunt": lambda args: f"scan started: {args[0] if args else '<target>'}",
+        "stop": lambda _args: "stop requested",
+        "logs": lambda _args: default_logs_handler(logs_path),
+        "report": lambda _args: "latest report path: results/",
+        "status": lambda _args: "no running scans",
+        "cve-update": lambda _args: "cve update triggered",
     }
-    return C2Router(owner_id=owner_id, handlers=handlers, logs_path=logs_path)
+    return C2Router(owner_id=owner_id, actions=handlers)

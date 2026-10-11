@@ -11,6 +11,7 @@ from typing import Any
 import requests
 
 from lib.logger import get_logger
+from lib.ssrf_guard import is_safe_url
 
 logger = get_logger("api_fetcher")
 
@@ -23,11 +24,24 @@ BUGCROWD_ENDPOINT = "https://api.bugcrowd.com/programs"
 INTIGRITI_ENDPOINT = "https://api.intigriti.com/external/researcher/v2/programs"
 YESWEHACK_ENDPOINT = "https://api.yeswehack.com/programs"
 
+# Fixed, operator-independent destinations. Explicit allowlist for the
+# SSRF guard (Pass 3B); every request below is checked before it is sent.
+_SSRF_ALLOW = {
+    "api.hackerone.com",
+    "api.bugcrowd.com",
+    "api.intigriti.com",
+    "api.yeswehack.com",
+}
+
 
 def fetch_intigriti_programs(api_key: str, session: requests.Session | None = None) -> list[dict[str, Any]]:
     """Fetch Intigriti programs (bearer auth). Normalized shape."""
     if not api_key:
         logger.debug("intigriti key unset; skipping fetch")
+        return []
+    safe, reason = is_safe_url(INTIGRITI_ENDPOINT, allow=_SSRF_ALLOW)
+    if not safe:
+        logger.warning("ssrf guard blocked %s: %s", INTIGRITI_ENDPOINT, reason)
         return []
     sess = session or requests
     try:
@@ -58,6 +72,10 @@ def fetch_yeswehack_programs(api_key: str, session: requests.Session | None = No
     if not api_key:
         logger.debug("yeswehack key unset; skipping fetch")
         return []
+    safe, reason = is_safe_url(YESWEHACK_ENDPOINT, allow=_SSRF_ALLOW)
+    if not safe:
+        logger.warning("ssrf guard blocked %s: %s", YESWEHACK_ENDPOINT, reason)
+        return []
     sess = session or requests
     try:
         resp = sess.get(
@@ -86,6 +104,10 @@ def fetch_hackerone_programs(username: str, api_token: str, session: requests.Se
     """Fetch H1 program listings (basic auth). Returns normalized programs."""
     if not username or not api_token:
         logger.debug("hackerone credentials unset; skipping fetch")
+        return []
+    safe, reason = is_safe_url(H1_ENDPOINT, allow=_SSRF_ALLOW)
+    if not safe:
+        logger.warning("ssrf guard blocked %s: %s", H1_ENDPOINT, reason)
         return []
     sess = session or requests
     try:
@@ -124,6 +146,10 @@ def fetch_bugcrowd_programs(api_key: str, session: requests.Session | None = Non
     """Fetch Bugcrowd program listings (token auth). Returns normalized programs."""
     if not api_key:
         logger.debug("bugcrowd key unset; skipping fetch")
+        return []
+    safe, reason = is_safe_url(BUGCROWD_ENDPOINT, allow=_SSRF_ALLOW)
+    if not safe:
+        logger.warning("ssrf guard blocked %s: %s", BUGCROWD_ENDPOINT, reason)
         return []
     sess = session or requests
     try:

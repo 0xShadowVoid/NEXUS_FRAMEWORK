@@ -54,16 +54,52 @@ def run_probe(
         timeout=cfg.tool_timeout(),
         deep_mode=deep,
         results_dir=results_dir,
+        rate_limit=target_config.rate_limit,
+        rate_key=target_config.domain,
+        cfg=cfg,
     )
 
     raw_findings: list[dict[str, Any]] = []
     target = target_config.domain
+
+    # Tool-registry selection (Pass 3A): profile/phase/enabled/availability/
+    # dependency gates from config/tools.yaml feed the existing allowed()
+    # hook. Resolution order keeps the legacy CLI contract: explicit
+    # --run-tools wins, then per-target tools, then profile membership;
+    # tools absent from the registry keep their legacy behaviour.
+    from lib.tool_registry import get_registry
+
+    registry = get_registry()
+    selected = registry.resolve(
+        intensity="full-scan" if deep else "quick-scan",
+        only=sorted(only) or None,
+        skip=sorted(skip) or None,
+        target_tools=list(target_config.tools or []) or None,
+        cfg=cfg,
+        phase="probe",
+    )
+    selected_names = {e.name for e in selected}
+    unresolved = registry.unresolved_dependencies(selected)
 
     def allowed(tool: str) -> bool:
         if tool in skip:
             return False
         if only and tool not in only:
             return False
+        entry = registry.get(tool)
+        if entry is not None:
+            if tool in unresolved:
+                logger.info(
+                    "probe: %s skipped — unresolved registry dependencies %s",
+                    tool, unresolved[tool],
+                )
+                return False
+            if tool not in selected_names and tool not in only:
+                # Explicit user-chosen endpoints keep their legacy right to
+                # run sqlmap in light mode (spec feature 8).
+                if not (tool == "sqlmap" and user_chosen_endpoints):
+                    logger.info("probe: %s not selected by tool registry", tool)
+                    return False
         return True
 
     # 1. nuclei (smart templates).

@@ -1,0 +1,846 @@
+# NEXUS Tool Registry — data-driven tool catalogue.
+#
+# Every tool is individually switchable ON/OFF via `enabled`. Tools that are
+# not installed, or whose external provider key is missing, degrade
+# gracefully: they are reported as unavailable and skipped (never fatal).
+#
+# Field reference (see lib/tool_registry.py):
+#   enabled       bool      individual ON/OFF (profile defaults may override)
+#   phase         which cycle the tool belongs to
+#   domain        recon/osint/web/network/cloud/intel/auth/takeover/report
+#   category      tool group used by phase cycles for selection
+#   mode          light (quick-scan) | deep (full-scan only)
+#   profiles      [minimal, standard, extended, deep, custom]
+#   requires_tools  tools that must have run first (dependency order)
+#   requires_provider  external provider that must have keys (OFF by default)
+#   timeout       seconds; falls back to scanning.tool_timeout_seconds
+#   retries       attempts on failure (deep mode honours this)
+#   safety        safe | moderate | heavy (heavy = deep-only + gating)
+#   parser        module:function that runs the tool (existing runners)
+#   evidence_type what the tool yields for the filtration pipeline
+#   capabilities  tags used for adaptive ("applicability") selection
+#   builtin       true = ships with NEXUS (not an external binary)
+#
+# OVERLAPPING TOOLS ARE INTENTIONAL. NEXUS never deletes tools because they
+# overlap; the filtration pipeline + unique-yield metrics decide which tools
+# actually add attack surface.
+
+profiles:
+  # Profile → tool name membership. Resolved as: custom > CLI intensity >
+  # profile defaults > per-tool `enabled`.
+  minimal:
+    tools: [subfinder, assetfinder, httpx, waybackurls, gau, nuclei, dalfox, arjun]
+  standard:
+    tools: [subfinder, assetfinder, httpx, waybackurls, gau, katana, dnsx, nuclei,
+            dalfox, arjun, jsluice, jwt_tool, lfihunt, graphql_cop, waf_probe,
+            cloudenum, ffuf, findomain, chaos, github_subdomains]
+  extended:
+    tools: [subfinder, assetfinder, httpx, waybackurls, gau, katana, dnsx, nuclei,
+            dalfox, arjun, jsluice, jwt_tool, lfihunt, graphql_cop, waf_probe,
+            cloudenum, ffuf, findomain, chaos, github_subdomains, amass, sublist3r,
+            dnscan, hakrawler, gospider, gauplus, paramspider, subjs, linkfinder,
+            trufflehog, nomore403, sqlmap, ghauri, commix, x8, kiterunner, sstimap,
+            tinja, lfimap, ssrfmap, recollapse, subdominator, naabu]
+  deep:
+    tools: [subfinder, assetfinder, httpx, waybackurls, gau, katana, dnsx, nuclei,
+            dalfox, arjun, jsluice, jwt_tool, lfihunt, graphql_cop, waf_probe,
+            cloudenum, ffuf, findomain, chaos, github_subdomains, amass, sublist3r,
+            dnscan, hakrawler, gospider, gauplus, paramspider, subjs, linkfinder,
+            trufflehog, nomore403, sqlmap, ghauri, commix, x8, kiterunner, sstimap,
+            tinja, lfimap, ssrfmap, recollapse, subdominator, naabu, nmap, bbot,
+            sqlidetector, upload_bypass, pphack, forbidden, smugglex, http2smugl,
+            graphw00f, clairvoyance, domdig, xssfuzz, cewl]
+  custom:
+    tools: []   # fully user-selected; empty means "use per-tool enabled flags"
+
+tools:
+  # ---------------------------------------------------------------- DISCOVER
+  subfinder:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: subdomain_enum
+    mode: light
+    profiles: [minimal, standard, extended, deep]
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_subdomain
+    evidence_type: subdomains
+    capabilities: [subdomain_enum]
+  assetfinder:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: subdomain_enum
+    mode: light
+    profiles: [minimal, standard, extended, deep]
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_subdomain
+    evidence_type: subdomains
+    capabilities: [subdomain_enum]
+  amass:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: subdomain_enum
+    mode: deep
+    profiles: [extended, deep]
+    safety: moderate
+    parser: phases.discover.pegpon_wrapper:run_tool_subdomain
+    evidence_type: subdomains
+    capabilities: [subdomain_enum]
+  sublist3r:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: subdomain_enum
+    mode: light
+    profiles: [extended, deep]
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_subdomain
+    evidence_type: subdomains
+    capabilities: [subdomain_enum]
+  findomain:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: subdomain_enum
+    mode: light
+    profiles: [standard, extended, deep]
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_subdomain
+    evidence_type: subdomains
+    capabilities: [subdomain_enum]
+  chaos:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: subdomain_enum
+    mode: light
+    profiles: [standard, extended, deep]
+    requires_provider: chaos
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_subdomain
+    evidence_type: subdomains
+    capabilities: [subdomain_enum]
+  github_subdomains:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: subdomain_enum
+    mode: light
+    profiles: [standard, extended, deep]
+    requires_provider: github
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_subdomain
+    evidence_type: subdomains
+    capabilities: [subdomain_enum, osint]
+  subenum:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: subdomain_enum
+    mode: light
+    profiles: [extended, deep]
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_subdomain
+    evidence_type: subdomains
+    capabilities: [subdomain_enum]
+  dnscan:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: dns
+    mode: light
+    profiles: [extended, deep]
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_subdomain
+    evidence_type: subdomains
+    capabilities: [dns]
+  puredns:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: dns
+    mode: deep
+    profiles: [extended, deep]
+    safety: moderate
+    parser: phases.discover.pegpon_wrapper:run_tool_subdomain
+    evidence_type: subdomains
+    capabilities: [dns, subdomain_bruteforce]
+  shuffledns:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: dns
+    mode: light
+    profiles: [extended, deep]
+    requires_provider: chaos
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_subdomain
+    evidence_type: subdomains
+    capabilities: [dns]
+  dnsx:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: dns
+    mode: light
+    profiles: [standard, extended, deep]
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_dnsx
+    evidence_type: subdomains
+    capabilities: [dns, resolution]
+  crtsh:
+    enabled: true
+    phase: discover
+    domain: osint
+    category: certificate_transparency
+    mode: light
+    profiles: [standard, extended, deep]
+    builtin: true
+    safety: safe
+    parser: lib.osint.crtsh:fetch
+    evidence_type: subdomains
+    capabilities: [certificate_transparency, osint]
+  securitytrails:
+    enabled: false              # external provider, OFF by default
+    phase: discover
+    domain: osint
+    category: osint
+    mode: light
+    profiles: [extended, deep]
+    requires_provider: securitytrails
+    builtin: true
+    safety: safe
+    parser: lib.osint.securitytrails:fetch
+    evidence_type: subdomains
+    capabilities: [osint]
+  virustotal:
+    enabled: false              # external provider, OFF by default
+    phase: discover
+    domain: osint
+    category: osint
+    mode: light
+    profiles: [extended, deep]
+    requires_provider: virustotal
+    builtin: true
+    safety: safe
+    parser: lib.osint.virustotal:fetch
+    evidence_type: subdomains
+    capabilities: [osint]
+  shodan:
+    enabled: false              # external provider, OFF by default
+    phase: discover
+    domain: osint
+    category: osint
+    mode: light
+    profiles: [extended, deep]
+    requires_provider: shodan
+    builtin: true
+    safety: safe
+    parser: lib.osint.shodan:fetch
+    evidence_type: hosts
+    capabilities: [osint, infrastructure]
+  censys:
+    enabled: false              # external provider (id+secret), OFF by default
+    phase: discover
+    domain: osint
+    category: osint
+    mode: light
+    profiles: [extended, deep]
+    requires_provider: censys
+    builtin: true
+    safety: safe
+    parser: lib.osint.censys:fetch
+    evidence_type: hosts
+    capabilities: [osint, infrastructure]
+  fofa:
+    enabled: false              # external provider (email+key), OFF by default
+    phase: discover
+    domain: osint
+    category: osint
+    mode: light
+    profiles: [extended, deep]
+    requires_provider: fofa
+    builtin: true
+    safety: safe
+    parser: lib.osint.fofa:fetch
+    evidence_type: hosts
+    capabilities: [osint, infrastructure]
+  zoomeye:
+    enabled: false              # external provider, OFF by default
+    phase: discover
+    domain: osint
+    category: osint
+    mode: light
+    profiles: [extended, deep]
+    requires_provider: zoomeye
+    builtin: true
+    safety: safe
+    parser: lib.osint.zoomeye:fetch
+    evidence_type: hosts
+    capabilities: [osint, infrastructure]
+  waybackurls:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: url_discovery
+    mode: light
+    profiles: [minimal, standard, extended, deep]
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_url
+    evidence_type: urls
+    capabilities: [url_discovery, archive]
+  gau:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: url_discovery
+    mode: light
+    profiles: [minimal, standard, extended, deep]
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_url
+    evidence_type: urls
+    capabilities: [url_discovery, archive]
+  gauplus:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: url_discovery
+    mode: light
+    profiles: [extended, deep]
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_url
+    evidence_type: urls
+    capabilities: [url_discovery, archive]
+  waymore:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: url_discovery
+    mode: deep
+    profiles: [deep]
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_url
+    evidence_type: urls
+    capabilities: [url_discovery, archive]
+  katana:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: crawl
+    mode: light
+    profiles: [standard, extended, deep]
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_crawl
+    evidence_type: urls
+    capabilities: [crawl, url_discovery]
+  hakrawler:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: crawl
+    mode: light
+    profiles: [extended, deep]
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_crawl
+    evidence_type: urls
+    capabilities: [crawl]
+  gospider:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: crawl
+    mode: light
+    profiles: [extended, deep]
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_crawl
+    evidence_type: urls
+    capabilities: [crawl]
+  httpx:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: live_hosts
+    mode: light
+    profiles: [minimal, standard, extended, deep]
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_httpx
+    evidence_type: urls
+    capabilities: [live_hosts, http_probe]
+  jsluice:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: javascript
+    mode: light
+    profiles: [standard, extended, deep]
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_js
+    evidence_type: urls
+    capabilities: [javascript, url_discovery, secrets]
+  subjs:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: javascript
+    mode: light
+    profiles: [extended, deep]
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_js
+    evidence_type: urls
+    capabilities: [javascript]
+  linkfinder:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: javascript
+    mode: light
+    profiles: [extended, deep]
+    safety: safe
+    parser: phases.discover.pegpon_wrapper:run_tool_js
+    evidence_type: urls
+    capabilities: [javascript, url_discovery]
+  trufflehog:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: secret_detection
+    mode: deep
+    profiles: [deep]
+    safety: moderate
+    parser: phases.discover.pegpon_wrapper:run_tool_js
+    evidence_type: raw_findings
+    capabilities: [secrets, javascript]
+  ffuf:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: content_discovery
+    mode: light
+    profiles: [standard, extended, deep]
+    safety: moderate
+    parser: phases.discover.pegpon_wrapper:run_tool_ffuf
+    evidence_type: urls
+    capabilities: [content_discovery]
+  bbot:
+    enabled: true
+    phase: discover
+    domain: recon
+    category: multi_recon
+    mode: deep
+    profiles: [deep]
+    requires_tools: [subfinder]
+    safety: moderate
+    parser: phases.discover.bbot_wrapper:run_bbot
+    evidence_type: subdomains
+    capabilities: [subdomain_enum, url_discovery, multi_recon]
+
+  # ------------------------------------------------------------------ PROBE
+  nuclei:
+    enabled: true
+    phase: probe
+    domain: web
+    category: vuln_multi
+    mode: light
+    profiles: [minimal, standard, extended, deep]
+    safety: safe
+    parser: phases.probe.nuclei_orchestrator:run_nuclei
+    evidence_type: raw_findings
+    capabilities: [vuln_multi, cve_templates]
+  dalfox:
+    enabled: true
+    phase: probe
+    domain: web
+    category: vuln_xss
+    mode: light
+    profiles: [minimal, standard, extended, deep]
+    safety: safe
+    parser: phases.probe.dalfox_runner:run_dalfox
+    evidence_type: raw_findings
+    capabilities: [xss]
+  xssfuzz:
+    enabled: true
+    phase: probe
+    domain: web
+    category: vuln_xss
+    mode: deep
+    profiles: [deep]
+    safety: moderate
+    parser: phases.probe.tool_runners:run_xssfuzz
+    evidence_type: raw_findings
+    capabilities: [xss]
+  domdig:
+    enabled: true
+    phase: probe
+    domain: web
+    category: vuln_xss
+    mode: deep
+    profiles: [deep]
+    safety: moderate
+    parser: phases.probe.tool_runners:run_domdig
+    evidence_type: raw_findings
+    capabilities: [xss, dom]
+  sqlmap:
+    enabled: true
+    phase: probe
+    domain: web
+    category: vuln_sqli
+    mode: deep
+    profiles: [deep]
+    safety: heavy
+    parser: phases.probe.sqlmap_runner:run_sqlmap
+    evidence_type: raw_findings
+    capabilities: [sqli]
+  ghauri:
+    enabled: true
+    phase: probe
+    domain: web
+    category: vuln_sqli
+    mode: deep
+    profiles: [deep]
+    safety: heavy
+    parser: phases.probe.tool_runners:run_ghauri
+    evidence_type: raw_findings
+    capabilities: [sqli, blind]
+  sqlidetector:
+    enabled: true
+    phase: probe
+    domain: web
+    category: vuln_sqli
+    mode: deep
+    profiles: [deep]
+    safety: moderate
+    parser: phases.probe.tool_runners:run_sqlidetector
+    evidence_type: raw_findings
+    capabilities: [sqli]
+  commix:
+    enabled: true
+    phase: probe
+    domain: web
+    category: vuln_rce
+    mode: deep
+    profiles: [deep]
+    safety: heavy
+    parser: phases.probe.tool_runners:run_commix
+    evidence_type: raw_findings
+    capabilities: [rce, command_injection]
+  sstimap:
+    enabled: true
+    phase: probe
+    domain: web
+    category: vuln_ssti
+    mode: deep
+    profiles: [deep]
+    safety: moderate
+    parser: phases.probe.tool_runners:run_sstimap
+    evidence_type: raw_findings
+    capabilities: [ssti]
+  tinja:
+    enabled: true
+    phase: probe
+    domain: web
+    category: vuln_ssti
+    mode: deep
+    profiles: [deep]
+    safety: moderate
+    parser: phases.probe.tool_runners:run_tinja
+    evidence_type: raw_findings
+    capabilities: [ssti]
+  lfihunt:
+    enabled: true
+    phase: probe
+    domain: web
+    category: vuln_lfi
+    mode: light
+    profiles: [standard, extended, deep]
+    safety: moderate
+    parser: phases.probe.tool_runners:run_lfihunt
+    evidence_type: raw_findings
+    capabilities: [lfi]
+  lfimap:
+    enabled: true
+    phase: probe
+    domain: web
+    category: vuln_lfi
+    mode: deep
+    profiles: [deep]
+    safety: moderate
+    parser: phases.probe.tool_runners:run_lfimap
+    evidence_type: raw_findings
+    capabilities: [lfi]
+  ssrfmap:
+    enabled: true
+    phase: probe
+    domain: web
+    category: vuln_ssrf
+    mode: deep
+    profiles: [deep]
+    safety: heavy
+    parser: phases.probe.tool_runners:run_ssrfmap
+    evidence_type: raw_findings
+    capabilities: [ssrf]
+  recollapse:
+    enabled: true
+    phase: probe
+    domain: web
+    category: vuln_ssrf
+    mode: deep
+    profiles: [deep]
+    safety: moderate
+    parser: phases.probe.tool_runners:run_recollapse
+    evidence_type: raw_findings
+    capabilities: [ssrf, redirect]
+  jwt_tool:
+    enabled: true
+    phase: probe
+    domain: web
+    category: token_analysis
+    mode: light
+    profiles: [standard, extended, deep]
+    safety: safe
+    parser: phases.probe.tool_runners:run_jwt_tool
+    evidence_type: raw_findings
+    capabilities: [jwt, authn]
+  graphql_cop:
+    enabled: true
+    phase: probe
+    domain: web
+    category: graphql
+    mode: light
+    profiles: [standard, extended, deep]
+    safety: safe
+    parser: phases.probe.tool_runners:run_graphql_cop
+    evidence_type: raw_findings
+    capabilities: [graphql, api]
+  graphw00f:
+    enabled: true
+    phase: probe
+    domain: web
+    category: graphql
+    mode: deep
+    profiles: [deep]
+    safety: safe
+    parser: phases.probe.tool_runners:run_graphw00f
+    evidence_type: raw_findings
+    capabilities: [graphql, fingerprint]
+  clairvoyance:
+    enabled: true
+    phase: probe
+    domain: web
+    category: graphql
+    mode: deep
+    profiles: [deep]
+    safety: safe
+    parser: phases.probe.tool_runners:run_clairvoyance
+    evidence_type: raw_findings
+    capabilities: [graphql, api, introspection]
+  arjun:
+    enabled: true
+    phase: probe
+    domain: web
+    category: param_discovery
+    mode: light
+    profiles: [minimal, standard, extended, deep]
+    safety: safe
+    parser: phases.probe.tool_runners:run_arjun
+    evidence_type: raw_findings
+    capabilities: [param_discovery]
+  x8:
+    enabled: true
+    phase: probe
+    domain: web
+    category: param_discovery
+    mode: deep
+    profiles: [extended, deep]
+    safety: moderate
+    parser: phases.probe.tool_runners:run_x8
+    evidence_type: raw_findings
+    capabilities: [param_discovery, hidden_params]
+  paraminer:
+    enabled: true
+    phase: probe
+    domain: web
+    category: param_discovery
+    mode: deep
+    profiles: [deep]
+    safety: moderate
+    parser: phases.probe.tool_runners:run_paraminer
+    evidence_type: raw_findings
+    capabilities: [param_discovery, hidden_params]
+  kiterunner:
+    enabled: true
+    phase: probe
+    domain: web
+    category: api_discovery
+    mode: deep
+    profiles: [extended, deep]
+    safety: moderate
+    parser: phases.probe.tool_runners:run_kiterunner
+    evidence_type: raw_findings
+    capabilities: [api, api_discovery]
+  nomore403:
+    enabled: true
+    phase: probe
+    domain: web
+    category: access_bypass
+    mode: deep
+    profiles: [deep]
+    safety: moderate
+    parser: phases.probe.tool_runners:run_nomore403
+    evidence_type: raw_findings
+    capabilities: [access_bypass, authz]
+  forbidden:
+    enabled: true
+    phase: probe
+    domain: web
+    category: access_bypass
+    mode: deep
+    profiles: [deep]
+    safety: moderate
+    parser: phases.probe.tool_runners:run_forbidden
+    evidence_type: raw_findings
+    capabilities: [access_bypass, authz]
+  upload_bypass:
+    enabled: true
+    phase: probe
+    domain: web
+    category: upload
+    mode: deep
+    profiles: [deep]
+    safety: moderate
+    parser: phases.probe.tool_runners:run_upload_bypass
+    evidence_type: raw_findings
+    capabilities: [upload, file_upload]
+  pphack:
+    enabled: true
+    phase: probe
+    domain: web
+    category: upload
+    mode: deep
+    profiles: [deep]
+    safety: moderate
+    parser: phases.probe.tool_runners:run_pphack
+    evidence_type: raw_findings
+    capabilities: [upload, file_upload]
+  smugglex:
+    enabled: true
+    phase: probe
+    domain: web
+    category: smuggling
+    mode: deep
+    profiles: [deep]
+    safety: heavy
+    parser: phases.probe.tool_runners:run_smugglex
+    evidence_type: raw_findings
+    capabilities: [smuggling, request_smuggling]
+  http2smugl:
+    enabled: true
+    phase: probe
+    domain: web
+    category: smuggling
+    mode: deep
+    profiles: [deep]
+    safety: heavy
+    parser: phases.probe.tool_runners:run_http2smugl
+    evidence_type: raw_findings
+    capabilities: [smuggling, h2c]
+  waf_probe:
+    enabled: true
+    phase: probe
+    domain: web
+    category: waf
+    mode: light
+    profiles: [standard, extended, deep]
+    safety: safe
+    parser: phases.probe.tool_runners:run_waf_probe
+    evidence_type: raw_findings
+    capabilities: [waf, fingerprint]
+
+  # ---------------------------------------------------------------- NETWORK
+  naabu:
+    enabled: true
+    phase: network
+    domain: network
+    category: port_scan
+    mode: deep
+    profiles: [extended, deep]
+    safety: heavy
+    parser: phases.network.net_orchestrator:run_naabu
+    evidence_type: ports
+    capabilities: [port_scan, network]
+  nmap:
+    enabled: true
+    phase: network
+    domain: network
+    category: service_scan
+    mode: deep
+    profiles: [deep]
+    safety: heavy
+    parser: phases.network.net_orchestrator:run_nmap
+    evidence_type: services
+    capabilities: [service_scan, version_detection, network]
+
+  # ----------------------------------------------------------------- CLOUD
+  cloudenum:
+    enabled: true
+    phase: cloud
+    domain: cloud
+    category: cloud_enum
+    mode: light
+    profiles: [standard, extended, deep]
+    safety: moderate
+    parser: phases.probe.tool_runners:run_cloudenum
+    evidence_type: raw_findings
+    capabilities: [cloud, cloud_enum]
+  s3scanner:
+    enabled: true
+    phase: cloud
+    domain: cloud
+    category: cloud_storage
+    mode: deep
+    profiles: [deep]
+    safety: moderate
+    parser: phases.probe.tool_runners:run_s3scanner
+    evidence_type: raw_findings
+    capabilities: [cloud, storage]
+  prowler:
+    enabled: true
+    phase: cloud
+    domain: cloud
+    category: cloud_posture
+    mode: deep
+    profiles: [deep]
+    safety: heavy
+    parser: phases.probe.tool_runners:run_prowler
+    evidence_type: raw_findings
+    capabilities: [cloud, posture]
+
+  # -------------------------------------------------------------- TAKEOVER
+  subdominator:
+    enabled: true
+    phase: takeover
+    domain: takeover
+    category: takeover
+    mode: light
+    profiles: [extended, deep]
+    safety: safe
+    parser: phases.takeover.takeover_orchestrator:run_subdominator
+    evidence_type: cnames
+    capabilities: [takeover, dangling_dns]
+
+  # --------------------------------------------------------------- INTEL
+  # CVE tooling reuses lib.cve_* (HTTP feeds, not external binaries).
+
+  # --------------------------------------------------------------- REPORT
+  gowitness:
+    enabled: true
+    phase: report
+    domain: web
+    category: screenshot
+    mode: light
+    profiles: [standard, extended, deep]
+    safety: moderate
+    parser: lib.screenshot:capture_batch
+    evidence_type: screenshots
+    capabilities: [screenshot, visual_evidence]

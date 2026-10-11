@@ -20,11 +20,28 @@ from urllib.parse import quote_plus, urlparse, parse_qs
 import requests
 
 from lib.logger import get_logger
+from lib.ssrf_guard import is_safe_url
 
 logger = get_logger("dorker")
 
 _TIMEOUT = (5, 20)
 _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NEXUS-Recon/1.0"
+
+# Fixed engine endpoints. Explicit SSRF guard allowlist (Pass 3B): engine
+# hosts are operator-independent; every request is checked before it is sent.
+_DDG_URL = "https://html.duckduckgo.com/html/"
+_GOOGLE_URL = "https://www.google.com/search"
+_BING_URL = "https://www.bing.com/search"
+_GITHUB_API_URL = "https://api.github.com/search/code"
+_GITHUB_HTML_URL = "https://github.com/search"
+_SSRF_ALLOW = {
+    "html.duckduckgo.com",
+    "duckduckgo.com",
+    "www.google.com",
+    "www.bing.com",
+    "api.github.com",
+    "github.com",
+}
 
 # Dork templates per intent. {domain} is the target domain.
 DORK_TEMPLATES: dict[str, list[str]] = {
@@ -59,6 +76,18 @@ DORK_TEMPLATES: dict[str, list[str]] = {
 }
 
 _DDG_RESULT_RE = re.compile(r'<a[^>]+class="result__a"[^>]+href="([^"]+)"', re.IGNORECASE)
+
+
+def _configured_engines() -> list[str] | None:
+    """Read ``scanning.dorking_engines`` from nexus.yaml (best-effort)."""
+    try:
+        from lib.config import load_config
+
+        cfg = load_config()
+        raw = (cfg.scanning or {}).get("dorking_engines")
+        return [str(e) for e in raw] if raw else None
+    except Exception:  # pragma: no cover - config optional for library use
+        return None
 _GENERIC_LINK_RE = re.compile(r'<a[^>]+href="(https?://[^"]+)"', re.IGNORECASE)
 _GOOGLE_URL_RE = re.compile(r'href="/url\?q=(https?://[^&"]+)')
 _GOOGLE_DIRECT_RE = re.compile(r'<a href="(https?://[^"]+)"')
@@ -107,7 +136,11 @@ class Dorker:
 
     def _search_ddg(self, intent: str, query: str) -> DorkResult:
         """DuckDuckGo HTML endpoint (no key required)."""
-        url = "https://html.duckduckgo.com/html/?q=" + quote_plus(query)
+        url = _DDG_URL + "?q=" + quote_plus(query)
+        safe, reason = is_safe_url(url, allow=_SSRF_ALLOW)
+        if not safe:
+            logger.warning("ssrf guard blocked %s: %s", url, reason)
+            return DorkResult(intent=intent, query=query, engine="duckduckgo", error=f"ssrf blocked: {reason}")
         try:
             resp = self.session.get(url, timeout=self.timeout)
             if resp.status_code != 200:
@@ -128,7 +161,11 @@ class Dorker:
 
     def _search_google(self, intent: str, query: str) -> DorkResult:
         """Google scrape (best-effort; may be blocked)."""
-        url = "https://www.google.com/search?q=" + quote_plus(query) + "&num=30"
+        url = _GOOGLE_URL + "?q=" + quote_plus(query) + "&num=30"
+        safe, reason = is_safe_url(url, allow=_SSRF_ALLOW)
+        if not safe:
+            logger.warning("ssrf guard blocked %s: %s", url, reason)
+            return DorkResult(intent=intent, query=query, engine="google", error=f"ssrf blocked: {reason}")
         try:
             resp = self.session.get(url, timeout=self.timeout)
             if resp.status_code != 200:
@@ -149,7 +186,11 @@ class Dorker:
 
     def _search_bing(self, intent: str, query: str) -> DorkResult:
         """Bing scrape (best-effort)."""
-        url = "https://www.bing.com/search?q=" + quote_plus(query)
+        url = _BING_URL + "?q=" + quote_plus(query)
+        safe, reason = is_safe_url(url, allow=_SSRF_ALLOW)
+        if not safe:
+            logger.warning("ssrf guard blocked %s: %s", url, reason)
+            return DorkResult(intent=intent, query=query, engine="bing", error=f"ssrf blocked: {reason}")
         try:
             resp = self.session.get(url, timeout=self.timeout)
             if resp.status_code != 200:
@@ -171,9 +212,13 @@ class Dorker:
     def _search_github(self, intent: str, query: str, token: str = "") -> DorkResult:
         """GitHub code search (API with token, else HTML search)."""
         if token:
+            safe, reason = is_safe_url(_GITHUB_API_URL, allow=_SSRF_ALLOW)
+            if not safe:
+                logger.warning("ssrf guard blocked %s: %s", _GITHUB_API_URL, reason)
+                return DorkResult(intent=intent, query=query, engine="github", error=f"ssrf blocked: {reason}")
             try:
                 resp = self.session.get(
-                    "https://api.github.com/search/code",
+                    _GITHUB_API_URL,
                     params={"q": query, "per_page": 30},
                     headers={"Accept": "application/vnd.github+json", "Authorization": f"Bearer {token}"},
                     timeout=self.timeout,
@@ -186,9 +231,13 @@ class Dorker:
             except requests.RequestException as exc:
                 return DorkResult(intent=intent, query=query, engine="github", error=str(exc))
         # HTML fallback (no token) — best-effort.
+        safe, reason = is_safe_url(_GITHUB_HTML_URL, allow=_SSRF_ALLOW)
+        if not safe:
+            logger.warning("ssrf guard blocked %s: %s", _GITHUB_HTML_URL, reason)
+            return DorkResult(intent=intent, query=query, engine="github", error=f"ssrf blocked: {reason}")
         try:
             resp = self.session.get(
-                "https://github.com/search",
+                _GITHUB_HTML_URL,
                 params={"q": query, "type": "code"},
                 timeout=self.timeout,
             )
@@ -210,7 +259,10 @@ class Dorker:
     ) -> list[DorkResult]:
         """Run dork intents across engines; returns all results."""
         intents = intents or list(DORK_TEMPLATES.keys())
-        engines = engines or ["duckduckgo", "google", "bing", "github"]
+        # Default engines: configured list, else the safe (non-scraping) set.
+        # Scraping engines (google/bing) must be enabled explicitly via
+        # scanning.dorking_engines or --engines.
+        engines = engines or _configured_engines() or ["duckduckgo", "github"]
         results: list[DorkResult] = []
         for intent in intents:
             templates = DORK_TEMPLATES.get(intent, [])
@@ -226,9 +278,13 @@ class Dorker:
                     results.append(self._search_github(intent, query, token=github_token))
         return results
 
-    def run(self, domain: str, github_token: str = "") -> dict[str, Any]:
-        """Run all intents on all engines; returns a serializable summary."""
-        results = self.run_intents(domain, github_token=github_token)
+    def run(self, domain: str, github_token: str = "", engines: list[str] | None = None) -> dict[str, Any]:
+        """Run all intents on the configured engines; returns a summary.
+
+        ``engines`` defaults to the framework-configured list
+        (``scanning.dorking_engines``); scraping engines are OFF by default.
+        """
+        results = self.run_intents(domain, github_token=github_token, engines=engines)
         all_urls: set[str] = set()
         by_intent: dict[str, list[str]] = {}
         errors = 0
@@ -248,10 +304,6 @@ class Dorker:
             "by_intent": {k: sorted(set(v)) for k, v in by_intent.items()},
             "results": [r.to_dict() for r in results],
         }
-        logger.info(
-            "dorking: %d queries, %d urls, %d engine errors",
-            len(results), len(all_urls), errors,
-        )
         return summary
 
 

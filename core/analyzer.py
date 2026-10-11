@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from core.database import Database
+from core import lifecycle
 from core.sanitizer import sanitize_finding
 from lib.chainer import detect_chains
 from lib.config import Config, TargetConfig
@@ -151,6 +152,11 @@ class Analyzer:
         finding_ids = self.db.insert_findings(scan_id, scoped)
         for f, fid in zip(scoped, finding_ids):
             f["id"] = fid
+            # Lifecycle: single authoritative state mechanism (Pass 3B §2).
+            try:
+                f["lifecycle_state"] = lifecycle.seed_from_analysis(self.db, fid, f)
+            except lifecycle.InvalidTransition as exc:  # pragma: no cover - defensive
+                logger.warning("lifecycle seed failed for finding %s: %s", fid, exc)
         chain_ids: list[int] = []
         for chain in chains:
             member_ids = [

@@ -11,12 +11,16 @@ import re
 
 MAX_SNIPPET_LENGTH = 500
 
+# Full evidence records keep more context than report snippets, but stay
+# bounded so a stored record can never balloon (Pass 3B §4).
+EVIDENCE_MAX_LENGTH = 20000
+
 # Headers/values that must never survive into a report.
 _SET_COOKIE_RE = re.compile(r"(?im)^set-cookie:.*$")
 _AUTH_HEADER_RE = re.compile(r"(?im)^(authorization|proxy-authorization):.*$")
 _BEARER_RE = re.compile(r"(?i)bearer\s+[a-z0-9._~+/=-]{10,}")
 _TOKEN_JSON_RE = re.compile(
-    r'"(token|access_token|refresh_token|api_?key|secret|session_?id)"\s*:\s*"[^"]*"',
+    r'"(token|access_token|refresh_token|api_?key|secret|session_?id|password|passwd|pwd)"\s*:\s*"[^"]*"',
     re.IGNORECASE,
 )
 _API_KEY_LIKE_RE = re.compile(
@@ -56,3 +60,46 @@ def sanitize_finding(finding: dict) -> dict:
     if "payload" in out:
         out["payload"] = sanitize_evidence(str(out.get("payload") or ""), max_length=300)
     return out
+
+
+# Headers whose values must never survive into persisted evidence.
+_SENSITIVE_HEADER_NAMES = frozenset({
+    "authorization", "proxy-authorization", "cookie", "set-cookie",
+    "x-api-key", "api-key", "apikey", "x-auth-token", "x-access-token",
+    "x-session-token", "x-csrf-token", "private-token", "x-amz-security-token",
+})
+
+
+def sanitize_headers(headers: dict[str, str] | None) -> dict[str, str]:
+    """Redact credential-bearing HTTP headers before persistence (Pass 3B §4)."""
+    out: dict[str, str] = {}
+    for key, value in (headers or {}).items():
+        k = str(key)
+        if k.strip().lower() in _SENSITIVE_HEADER_NAMES:
+            out[k] = "[REDACTED]"
+            continue
+        v = str(value)
+        v = _BEARER_RE.sub("bearer [REDACTED]", v)
+        v = _API_KEY_LIKE_RE.sub("[REDACTED-KEY]", v)
+        out[k] = v
+    return out
+
+
+def sanitize_evidence_record(
+    request_headers: dict[str, str] | None = None,
+    request_body: str = "",
+    response_headers: dict[str, str] | None = None,
+    response_body: str = "",
+) -> tuple[dict[str, str], str, dict[str, str], str]:
+    """Sanitize a full evidence record for persistence.
+
+    Returns ``(request_headers, request_body, response_headers, response_body)``
+    with secrets redacted; keeps enough request/response context for
+    reproduction (method/url/status live outside this record).
+    """
+    return (
+        sanitize_headers(request_headers),
+        sanitize_evidence(str(request_body or ""), max_length=EVIDENCE_MAX_LENGTH),
+        sanitize_headers(response_headers),
+        sanitize_evidence(str(response_body or ""), max_length=EVIDENCE_MAX_LENGTH),
+    )

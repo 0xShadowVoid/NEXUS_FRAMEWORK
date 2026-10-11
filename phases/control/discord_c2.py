@@ -57,15 +57,13 @@ class DiscordC2:
 
 
 def build_default_router(owner_id: str, logs_path=None) -> C2Router:
-    """Build a router with the default handler set."""
-    from pathlib import Path
-
-    handlers: dict[str, Callable[[str], str]] = {
-        "/nexus hunt": lambda target: f"scan started: {target}",
-        "/nexus stop": lambda _a: "stop requested",
-        "/nexus logs": lambda _a: default_logs_handler(logs_path),
-        "/nexus report": lambda _a: "latest report path: results/",
-        "/nexus status": lambda _a: "no running scans",
-        "/nexus cve-update": lambda _a: "cve update triggered",
+    """Build a router with the default handler set (standalone/stub use)."""
+    handlers: dict[str, Callable[[list[str]], str]] = {
+        "hunt": lambda args: f"scan started: {args[0] if args else '<target>'}",
+        "stop": lambda _args: "stop requested",
+        "logs": lambda _args: default_logs_handler(logs_path),
+        "report": lambda _args: "latest report path: results/",
+        "status": lambda _args: "no running scans",
+        "cve-update": lambda _args: "cve update triggered",
     }
-    return C2Router(owner_id=owner_id, handlers=handlers, logs_path=logs_path)
+    return C2Router(owner_id=owner_id, actions=handlers)

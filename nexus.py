@@ -28,8 +28,10 @@ from lib.config import load_config, validate_keys
 from lib.exceptions import ConfigError, NexusError, ScopeException
 from lib.logger import get_logger, setup_logging
 from lib.paths import CONFIG_DIR, LOGS_DIR
+from lib.version import framework_version
 
-__version__ = "2.0.0"
+# Version comes from the repo-level VERSION file (single source of truth).
+__version__ = framework_version()
 __codename__ = "Apex"
 _VERSION_STR = f"NEXUS {__version__} \"{__codename__}\""
 
@@ -460,13 +462,19 @@ def cmd_dork(args: argparse.Namespace) -> int:
 
 
 def cmd_check_tools(args: argparse.Namespace) -> int:
-    import shutil as _shutil
+    from lib.tool_registry import get_registry
 
-    from phases.probe.tool_runner import TOOL_CATALOG
-
-    status = {tool: bool(_shutil.which(tool)) for tool in sorted(TOOL_CATALOG)}
-    installed = [t for t, ok in status.items() if ok]
-    print(json.dumps({"installed": installed, "missing": [t for t in status if t not in installed]}, indent=2))
+    cfg = load_config()
+    registry = get_registry()
+    status = registry.status(cfg)
+    installed = [t for t, s in status.items() if s["availability"] == "installed"]
+    missing = [t for t, s in status.items() if s["availability"] == "missing"]
+    key_missing = [t for t, s in status.items() if s["availability"] == "key-missing"]
+    print(json.dumps({
+        "installed": sorted(installed),
+        "missing": sorted(missing),
+        "key_missing (provider OFF/no key)": sorted(key_missing),
+    }, indent=2))
     return 0
 
 
