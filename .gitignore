@@ -35,6 +35,7 @@ nexus.db
 *.db-journal
 *.db-wal
 *.db-shm
+browser-artifacts
 
 # --- Downloaded / generated content ---
 wordlists/seclists/
