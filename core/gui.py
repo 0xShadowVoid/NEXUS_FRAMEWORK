@@ -93,7 +93,7 @@ def dashboard(user: str = Depends(get_current_user)) -> str:
             <h3>Authenticated User: <code>""" + user + """</code></h3>
             <p>Status: Active | Scope enforcement: Enabled | Binding: Loopback</p>
         </div>
-        
+
         <div class="card">
             <h2>Launch Assessment</h2>
             <form id="scanForm" onsubmit="launchScan(event)">
@@ -133,7 +133,7 @@ def dashboard(user: str = Depends(get_current_user)) -> str:
                 const target = document.getElementById('target').value;
                 const intensity = document.getElementById('intensity').value;
                 const confirm = document.getElementById('confirm').checked;
-                
+
                 const res = await fetch('/api/scan', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -160,19 +160,19 @@ def get_engagements(user: str = Depends(get_current_user)) -> dict[str, Any]:
 def api_launch_scan(payload: ScanRequestModel, user: str = Depends(get_current_user)) -> dict[str, Any]:
     if not payload.confirm:
         raise HTTPException(status_code=400, detail="Explicit confirmation required to launch assessment.")
-    
+
     cfg = load_config()
     target_config = cfg.target(payload.target)
     target_config.intensity = payload.intensity
     if payload.cookie:
         target_config.cookie = payload.cookie
-        
+
     # Server-side scope enforcement
     try:
         validate_target_scope(payload.target, target_config)
     except Exception as e:
         raise HTTPException(status_code=403, detail=f"Scope validation failed: {str(e)}")
-        
+
     # For safe API testing without running real scans in unit tests, if target contains 'out-of-scope' or 'malicious'
     if "out-of-scope" in payload.target or "malicious" in payload.target:
         raise HTTPException(status_code=403, detail="Scope validation failed: target is out of scope")
@@ -184,7 +184,7 @@ def api_launch_scan(payload: ScanRequestModel, user: str = Depends(get_current_u
         cookie=payload.cookie or "",
         scope_kind=payload.scope_kind
     )
-    
+
     try:
         summary = coordinator.run_scan(options)
         return {"status": "success", "summary": sanitize_evidence(summary)}

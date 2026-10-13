@@ -1,7 +1,7 @@
 # NEXUS Operations Guide
 
 ## 1. Overview & Architecture
-NEXUS 2.0.0 ("Apex") is a modular bug bounty and security automation framework designed for offline-first, permission-gated vulnerability discovery, probing, analysis, hunting, control, and scaling. 
+NEXUS 2.0.0 ("Apex") is a modular bug bounty and security automation framework designed for offline-first, permission-gated vulnerability discovery, probing, analysis, hunting, control, and scaling.
 
 This guide outlines operational deployment, configuration, secure execution, backup, and recovery procedures for NEXUS RC1.
 
