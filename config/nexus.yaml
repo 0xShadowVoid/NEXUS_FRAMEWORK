@@ -5,6 +5,10 @@ scanning:
   default_intensity: quick-scan
   tool_timeout_seconds: 300
   rate_limit_default: "50/minute"
+  request_budget: 0            # 0 = unlimited; positive N caps requests/scan
+  probe_max_urls: 50           # HTTP collector budget per scan
+  ssrf_allow: []               # hosts explicitly permitted despite private IPs
+  dorking_engines: [duckduckgo, github]   # scraping engines are OFF by default
 
 phases:
   discover:
@@ -24,6 +28,21 @@ phases:
     enabled: false                    # C2 bot off by default
   scale:
     enabled: false                    # scaffold only
+  network:
+    enabled: true                     # gate still requires deep profile + explicit ip scope
+    ports: []                         # explicit ports/ranges; empty = conservative default set
+    concurrency: 16                   # low by default
+    connect_timeout: 1.5
+    probe_timeout: 2.0
+    max_ports: 512
+    allow_private: false              # private/loopback/link-local need explicit in-scope grants too
+  cloud:
+    enabled: true                     # gate still requires explicit cloud scope (scope_kind)
+    providers: []                     # explicit provider selection: aws/azure/gcp; empty = none
+    accounts: {}                      # per-provider account/project/subscription allowlists; fails closed when empty
+    max_resources: 200                # per-section resource cap
+    region: ""                        # optional AWS/regional hint
+    project: ""                       # optional GCP project hint
 
 targets:
   paypal.com:
@@ -80,6 +99,17 @@ c2_bot:
   enabled: true
   use_same_webhook: true
   channels: [discord, telegram]
+
+nemesis:
+  enabled: true              # additive reasoning layer; optional parts stay OFF
+  memory:
+    enabled: true            # local SQLite engagement memory (no external services)
+  skills:
+    enabled: []              # NO skill is auto-enabled; list names to activate
+  browser:
+    enabled: false           # real browser automation (Playwright) — off by default
+  mcp:
+    enabled: false           # external MCP tools — off by default
 
 results:
   base_dir: results

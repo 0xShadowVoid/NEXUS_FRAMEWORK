@@ -19,11 +19,13 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from urllib.parse import urlsplit
 
 import requests
 
 from lib.key_pool import KeyPoolRegistry, mask_key
 from lib.logger import get_logger
+from lib.ssrf_guard import is_safe_url
 
 logger = get_logger("ai_analyzer")
 
@@ -53,6 +55,11 @@ _PROVIDER_DEFAULT_MODEL = {
 }
 
 ALL_PROVIDERS = tuple(_PROVIDER_BASE.keys())
+
+# Built-in provider hosts: explicit SSRF guard allowlist (Pass 3B). Custom
+# base URLs are operator-configured and validated with ``local_ok=True``
+# (local AI endpoints are permitted by design; metadata hosts stay blocked).
+_SSRF_ALLOW = {urlsplit(u).hostname for u in _PROVIDER_BASE.values() if u} - {None}
 
 # Providers that need no API key (local endpoints).
 _KEYLESS_PROVIDERS = {"ollama"}
@@ -159,6 +166,10 @@ class AIAnalyzer:
             ],
             "temperature": 0.1,
         }
+        safe, reason = is_safe_url(url, allow=_SSRF_ALLOW, local_ok=True)
+        if not safe:
+            logger.warning("ssrf guard blocked AI endpoint (%s): %s", provider, reason)
+            return True, None  # treat as transport failure; try next key/provider
         try:
             resp = requests.post(url, headers=headers, json=body, timeout=_TIMEOUT)
         except requests.RequestException as exc:

@@ -16,12 +16,16 @@ from typing import Any
 import requests
 
 from lib.logger import get_logger
+from lib.ssrf_guard import is_safe_url
 
 logger = get_logger("threat_feeds")
 
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 EPSS_URL = "https://api.first.org/data/v1/epss"
 GHSA_URL = "https://api.github.com/advisories"
+
+# Fixed public, read-only destinations: explicit SSRF guard allowlist (Pass 3B).
+_SSRF_ALLOW = {"www.cisa.gov", "api.first.org", "api.github.com"}
 
 _TIMEOUT = (10, 30)
 _EPSS_BATCH = 100          # ids per EPSS request
@@ -37,6 +41,10 @@ class ThreatFeeds:
 
     def fetch_kev(self) -> set[str]:
         """Return the set of CVE ids in the CISA KEV catalog (upper-cased)."""
+        safe, reason = is_safe_url(KEV_URL, allow=_SSRF_ALLOW)
+        if not safe:
+            logger.warning("ssrf guard blocked %s: %s", KEV_URL, reason)
+            return set()
         try:
             resp = self.session.get(KEV_URL, timeout=self.timeout)
             if getattr(resp, "status_code", 0) != 200:
@@ -60,6 +68,10 @@ class ThreatFeeds:
         ids = [str(c).strip().upper() for c in (cve_ids or []) if str(c).strip()]
         for start in range(0, len(ids), _EPSS_BATCH):
             chunk = ids[start : start + _EPSS_BATCH]
+            safe, reason = is_safe_url(EPSS_URL, allow=_SSRF_ALLOW)
+            if not safe:
+                logger.warning("ssrf guard blocked %s: %s", EPSS_URL, reason)
+                continue
             try:
                 resp = self.session.get(
                     EPSS_URL, params={"cve": ",".join(chunk)}, timeout=self.timeout
@@ -91,6 +103,10 @@ class ThreatFeeds:
         params = {"per_page": 100}
         if ecosystem:
             params["ecosystem"] = ecosystem
+        safe, reason = is_safe_url(GHSA_URL, allow=_SSRF_ALLOW)
+        if not safe:
+            logger.warning("ssrf guard blocked %s: %s", GHSA_URL, reason)
+            return []
         try:
             resp = self.session.get(GHSA_URL, params=params, timeout=self.timeout)
             if getattr(resp, "status_code", 0) != 200:

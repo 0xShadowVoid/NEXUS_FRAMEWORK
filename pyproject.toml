@@ -36,7 +36,13 @@ packages = [
     "phases.control",
     "phases.scale",
     "phases.verify",
+    "phases.auth",
+    "phases.cloud",
+    "phases.network",
+    "phases.takeover",
+    "lib.nemesis",
 ]
+include-package-data = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

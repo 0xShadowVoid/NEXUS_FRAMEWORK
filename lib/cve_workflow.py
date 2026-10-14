@@ -6,7 +6,7 @@ from typing import Any
 
 from core.database import Database
 from lib.config import Config
-from lib.cve_fetcher import CVEFetcher, match_tech
+from lib.cve_fetcher import CVEFetcher, match_tech_ex
 from lib.cve_poc_generator import generate_all, register_nuclei_template
 from lib.logger import get_logger
 from lib.notifications import EmailAlerter, Notifier
@@ -53,8 +53,9 @@ def run_cve_update(
             logger.warning("threat-feed enrichment failed: %s", exc)
 
     matches: list[tuple[dict[str, Any], list[str]]] = []
+    match_report: dict[str, int] = {}
     if tech_stack:
-        matches = match_tech(cves, tech_stack)
+        matches, match_report = match_tech_ex(cves, tech_stack)
     else:
         # No tech context → treat all fetched CVEs as candidates.
         matches = [(c, []) for c in cves]
@@ -124,6 +125,7 @@ def run_cve_update(
         "alerted": alerted,
         "kev_matched": kev_matched,
         "epss_above_0_5": epss_above,
+        "match_report": match_report,
     }
     logger.info("cve-update complete: %s", summary)
     return summary
@@ -146,7 +148,9 @@ def run_cve_scan(
     if cve_id:
         cves = [c for c in cves if str(c.get("cve_id", "")).upper() == cve_id.upper()]
 
-    matches = match_tech(cves, tech_stack) if tech_stack else [(c, []) for c in cves]
+    matches, match_report = (
+        match_tech_ex(cves, tech_stack) if tech_stack else ([(c, []) for c in cves], {})
+    )
 
     results: list[dict[str, Any]] = []
     for cve, techs in matches:
@@ -155,6 +159,7 @@ def run_cve_scan(
             "cve_id": cve_id_found,
             "severity": cve.get("severity"),
             "tech_matched": techs,
+            "applicability": cve.get("applicability", "candidate"),
             "description": str(cve.get("description", ""))[:300],
         })
         db.get_or_create_cve(
@@ -165,4 +170,4 @@ def run_cve_scan(
             tech_matched=",".join(techs),
         )
 
-    return {"target": target, "candidates": len(cves), "matches": results}
+    return {"target": target, "candidates": len(cves), "matches": results, "match_report": match_report}

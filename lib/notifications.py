@@ -11,16 +11,28 @@ import smtplib
 import time
 from email.message import EmailMessage
 from typing import Any
+from urllib.parse import urlsplit
 
 import requests
 
 from lib.logger import get_logger
+from lib.ssrf_guard import is_safe_url
 
 logger = get_logger("notifications")
 
 _HTTP_TIMEOUT = (5, 15)          # (connect, read) seconds
 _MAX_RETRIES = 2                  # initial try + 1 retry
 _RETRY_CAP_SECONDS = 5.0
+
+# Known alert destinations: explicit SSRF guard allowlist (Pass 3B).
+# Operator-specific hosts can be added via the ``SSRF_ALLOW`` env var.
+_SSRF_ALLOW = {
+    "discord.com",
+    "discordapp.com",
+    "canary.discord.com",
+    "ptb.discord.com",
+    "api.telegram.org",
+}
 
 # Severity → Discord embed color (int).
 SEVERITY_COLORS = {
@@ -133,6 +145,12 @@ def _post_with_retry(url: str, json_payload: dict[str, Any]) -> bool:
     """POST with best-effort retry; returns True on 2xx. Never raises."""
     if not url:
         logger.debug("no endpoint configured; skipping send")
+        return False
+    safe, reason = is_safe_url(url, allow=_SSRF_ALLOW)
+    if not safe:
+        # Never log the full webhook URL (it contains a token): host only.
+        host = urlsplit(url).hostname or "?"
+        logger.warning("ssrf guard blocked alert endpoint host=%s: %s", host, reason)
         return False
     last_error: Exception | None = None
     for _attempt in range(_MAX_RETRIES):

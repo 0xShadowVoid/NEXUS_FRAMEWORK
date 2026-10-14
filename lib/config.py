@@ -138,8 +138,21 @@ class Config:
         return self._main.get("ai", {})
 
     @property
+    def nemesis(self) -> dict[str, Any]:
+        return self._main.get("nemesis", {})
+
+    @property
     def cve(self) -> dict[str, Any]:
         return self._main.get("cve", {})
+
+    @property
+    def authn(self) -> dict[str, Any]:
+        """``authn:`` section (operator-configured identities for AUTHN/AUTHZ).
+
+        Identities live under ``authn.identities`` in nexus.yaml; only the
+        *names* of credential env keys are referenced, never the values.
+        """
+        return self._main.get("authn", {}) or {}
 
     @property
     def c2_bot(self) -> dict[str, Any]:
@@ -194,6 +207,18 @@ class Config:
         tg = self.webhooks.get("telegram", {}) or {}
         return str(tg.get("bot_token", "") or ""), str(tg.get("chat_id", "") or "")
 
+    def resolved_providers(self) -> dict[str, str]:
+        """Present external providers as ``{provider: env_key_name}`` (no values)."""
+        from lib import provider_aliases as aliases_mod
+
+        return aliases_mod.resolve_aliases(self.env)
+
+    def provider_available(self, provider: str) -> bool:
+        """True when all env values required by an external provider are set."""
+        from lib import provider_aliases as aliases_mod
+
+        return aliases_mod.provider_keys_available(self.env, provider)
+
 
 def load_config(config_dir: Path | None = None) -> Config:
     """Load nexus.yaml + false_positive_filters.yaml + .keys.env."""
@@ -211,7 +236,12 @@ def load_config(config_dir: Path | None = None) -> Config:
     env: dict[str, str] = {}
     if keys_path.exists():
         load_dotenv(dotenv_path=str(keys_path), override=False)
-    for key in KNOWN_ENV_KEYS:
+    # External-provider aliases (VT/SHODAN/CENSYS/FOFA/ZOOMEYE/CHAOS...) are
+    # resolved by lib.provider_aliases; only key *names* are read here.
+    from lib import provider_aliases as aliases_mod
+
+    env_keys = list(KNOWN_ENV_KEYS) + aliases_mod.EXTRA_ENV_KEYS
+    for key in env_keys:
         val = os.environ.get(key, "")
         if val:
             env[key] = val

@@ -18,13 +18,24 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from lib.logger import get_logger
 from lib.utils import utc_timestamp
+from core.sanitizer import sanitize_evidence_record
 
 logger = get_logger("database")
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 4
+
+# Canonical evidence phase attribution (Pass 3C §3): ``evidence.source``
+# carries the producing PHASE (e.g. "probe", "authn", "authz", "takeover")
+# and ``evidence.tool`` names the producing tool — the existing schema
+# represents phase attribution safely without a new column.
+EVIDENCE_PHASES = (
+    "discover", "probe", "verify", "analyze", "hunt", "control",
+    "authn", "authz", "takeover", "intel", "report", "manual", "browser", "network", "cloud",
+)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS targets (
@@ -142,7 +153,12 @@ class Database:
             pass
         self.conn.executescript(_SCHEMA)
         self.conn.commit()
-        logger.debug("database ready at %s", self.path)
+        # Additive migrations: upgrade an existing nexus.db in place.
+        # Never drops/alters existing tables (see core/migrations.py).
+        from core import migrations as migrations_mod
+
+        self.schema_version = migrations_mod.migrate(self.conn)
+        logger.debug("database ready at %s (schema v%d)", self.path, self.schema_version)
 
     def close(self) -> None:
         with self._lock:
@@ -545,3 +561,420 @@ class Database:
             "findings_oos": oos_count,
             "by_severity": by_sev,
         }
+
+    # -- phase runs (v2) ----------------------------------------------------
+
+    def upsert_phase_run(
+        self,
+        scan_id: int,
+        phase: str,
+        state: str,
+        started_at: str | None = None,
+        ended_at: str | None = None,
+        attempts: int | None = None,
+        checkpoint: str | None = None,
+        error: str | None = None,
+    ) -> int:
+        """Insert or update the lifecycle row for one phase of one scan."""
+        rows = self.query(
+            "SELECT id FROM phase_runs WHERE scan_id = ? AND phase = ?", (scan_id, phase)
+        )
+        sets = ["state = ?"]
+        params: list[Any] = [state]
+        if started_at is not None:
+            sets.append("started_at = ?")
+            params.append(started_at)
+        if ended_at is not None:
+            sets.append("ended_at = ?")
+            params.append(ended_at)
+        if attempts is not None:
+            sets.append("attempts = ?")
+            params.append(attempts)
+        if checkpoint is not None:
+            sets.append("checkpoint = ?")
+            params.append(checkpoint)
+        if error is not None:
+            sets.append("error = ?")
+            params.append(error)
+        if rows:
+            params.append(rows[0]["id"])
+            self.execute(
+                f"UPDATE phase_runs SET {', '.join(sets)} WHERE id = ?", tuple(params)
+            )
+            return int(rows[0]["id"])
+        cur = self.execute(
+            "INSERT INTO phase_runs (scan_id, phase, state, started_at, ended_at,"
+            " attempts, checkpoint, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (scan_id, phase, state, started_at or _now(), ended_at, attempts or 0,
+             checkpoint, error),
+        )
+        return int(cur.lastrowid)
+
+    def list_phase_runs(self, scan_id: int) -> list[dict[str, Any]]:
+        return self.query(
+            "SELECT * FROM phase_runs WHERE scan_id = ? ORDER BY id", (scan_id,)
+        )
+
+    def get_phase_run(self, scan_id: int, phase: str) -> dict[str, Any] | None:
+        rows = self.query(
+            "SELECT * FROM phase_runs WHERE scan_id = ? AND phase = ?", (scan_id, phase)
+        )
+        return rows[0] if rows else None
+
+    # -- tool runs (v2) -----------------------------------------------------
+
+    def record_tool_run(
+        self,
+        scan_id: int,
+        phase: str,
+        tool: str,
+        status: str,
+        duration_ms: int = 0,
+        returncode: int | None = None,
+        output_path: str = "",
+        filtration_stats_id: int | None = None,
+    ) -> int:
+        cur = self.execute(
+            "INSERT INTO tool_runs (scan_id, phase, tool, status, duration_ms,"
+            " returncode, output_path, filtration_stats_id, started_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (scan_id, phase, tool, status, int(duration_ms), returncode, output_path,
+             filtration_stats_id, _now()),
+        )
+        return int(cur.lastrowid)
+
+    def list_tool_runs(self, scan_id: int, phase: str | None = None) -> list[dict[str, Any]]:
+        if phase is None:
+            return self.query(
+                "SELECT * FROM tool_runs WHERE scan_id = ? ORDER BY id", (scan_id,)
+            )
+        return self.query(
+            "SELECT * FROM tool_runs WHERE scan_id = ? AND phase = ? ORDER BY id",
+            (scan_id, phase),
+        )
+
+    # -- attack-surface graph (v2) -------------------------------------------
+
+    def upsert_asset(
+        self,
+        kind: str,
+        value: str,
+        normalized: str,
+        source_tool: str = "",
+        scan_id: int | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> tuple[int, bool]:
+        """Insert an asset if new; returns (id, created?)."""
+        rows = self.query(
+            "SELECT id FROM assets WHERE kind = ? AND normalized = ?", (kind, normalized)
+        )
+        if rows:
+            self.execute(
+                "UPDATE assets SET last_seen = ? WHERE id = ?", (_now(), rows[0]["id"])
+            )
+            return int(rows[0]["id"]), False
+        cur = self.execute(
+            "INSERT INTO assets (scan_id, kind, value, normalized, source_tool,"
+            " first_seen, last_seen, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (scan_id, kind, value, normalized, source_tool, _now(), _now(),
+             json.dumps(metadata or {})),
+        )
+        return int(cur.lastrowid), True
+
+    def get_asset(self, kind: str, normalized: str) -> dict[str, Any] | None:
+        rows = self.query(
+            "SELECT * FROM assets WHERE kind = ? AND normalized = ?", (kind, normalized)
+        )
+        return rows[0] if rows else None
+
+    def list_assets(self, kind: str | None = None, scan_id: int | None = None) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM assets WHERE 1=1"
+        params: list[Any] = []
+        if kind is not None:
+            sql += " AND kind = ?"
+            params.append(kind)
+        if scan_id is not None:
+            sql += " AND scan_id = ?"
+            params.append(scan_id)
+        return self.query(sql + " ORDER BY id", tuple(params))
+
+    def upsert_edge(
+        self,
+        src_id: int,
+        dst_id: int,
+        relation: str,
+        source_tool: str = "",
+        scan_id: int | None = None,
+    ) -> tuple[int, bool]:
+        rows = self.query(
+            "SELECT id FROM asset_edges WHERE src_id = ? AND dst_id = ? AND relation = ?",
+            (src_id, dst_id, relation),
+        )
+        if rows:
+            return int(rows[0]["id"]), False
+        cur = self.execute(
+            "INSERT INTO asset_edges (scan_id, src_id, dst_id, relation, source_tool,"
+            " first_seen) VALUES (?, ?, ?, ?, ?, ?)",
+            (scan_id, src_id, dst_id, relation, source_tool, _now()),
+        )
+        return int(cur.lastrowid), True
+
+    def list_edges(self, scan_id: int | None = None) -> list[dict[str, Any]]:
+        if scan_id is None:
+            return self.query("SELECT * FROM asset_edges ORDER BY id")
+        return self.query(
+            "SELECT * FROM asset_edges WHERE scan_id = ? ORDER BY id", (scan_id,)
+        )
+
+    # -- evidence (v2) -------------------------------------------------------
+
+    def insert_evidence(
+        self,
+        scan_id: int,
+        url: str,
+        method: str = "GET",
+        request_headers: dict[str, str] | None = None,
+        request_body: str = "",
+        status_code: int | None = None,
+        response_headers: dict[str, str] | None = None,
+        response_body: str = "",
+        tool: str = "",
+        source: str = "",
+        finding_id: int | None = None,
+        screenshot_path: str = "",
+        sanitized: bool = False,
+    ) -> int:
+        """Persist one evidence record (sanitized; auto asset-link best-effort).
+
+        ``source`` is the canonical phase attribution (see ``EVIDENCE_PHASES``);
+        ``tool`` names the producing tool.
+        """
+        # SECURITY BOUNDARY (Pass 3B §4): evidence is sanitized HERE, before
+        # persistence — no caller can store raw credentials. The stored
+        # ``sanitized`` flag records that this enforcement ran.
+        req_h, req_b, resp_h, resp_b = sanitize_evidence_record(
+            request_headers, request_body, response_headers, response_body
+        )
+        cur = self.execute(
+            "INSERT INTO evidence (scan_id, finding_id, url, method, request_headers,"
+            " request_body, status_code, response_headers, response_body, timestamp,"
+            " tool, source, screenshot_path, sanitized) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                scan_id, finding_id, url, method,
+                json.dumps(req_h), req_b,
+                status_code, json.dumps(resp_h), resp_b,
+                _now(), tool, source, screenshot_path, 1,
+            ),
+        )
+        evidence_id = int(cur.lastrowid)
+        # Pass 3C §2: best-effort auto-link to an ALREADY-KNOWN asset.
+        self._auto_link_evidence_asset(evidence_id, url)
+        return evidence_id
+
+    def query_evidence(self, scan_id: int | None = None, finding_id: int | None = None) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM evidence WHERE 1=1"
+        params: list[Any] = []
+        if scan_id is not None:
+            sql += " AND scan_id = ?"
+            params.append(scan_id)
+        if finding_id is not None:
+            sql += " AND finding_id = ?"
+            params.append(finding_id)
+        rows = self.query(sql + " ORDER BY id", tuple(params))
+        for r in rows:
+            r["request_headers"] = json.loads(r.get("request_headers") or "{}")
+            r["response_headers"] = json.loads(r.get("response_headers") or "{}")
+        return rows
+
+    def set_evidence_finding(self, evidence_id: int, finding_id: int) -> bool:
+        """Link stored evidence to a finding (Pass 3B §3, linkage only)."""
+        cur = self.execute(
+            "UPDATE evidence SET finding_id = ? WHERE id = ?", (finding_id, evidence_id)
+        )
+        return cur.rowcount > 0
+
+    def set_evidence_asset(self, evidence_id: int, asset_id: int, relation: str = "observed-on") -> int:
+        """Link stored evidence to an attack-surface asset (Pass 3B §3)."""
+        cur = self.execute(
+            "INSERT INTO evidence_assets (evidence_id, asset_id, relation, created_at)"
+            " VALUES (?, ?, ?, ?)",
+            (evidence_id, asset_id, relation, _now()),
+        )
+        return int(cur.lastrowid)
+
+    def _auto_link_evidence_asset(self, evidence_id: int, url: str) -> None:
+        """Best-effort Pass 3C §2: link evidence to an already-known asset.
+
+        Never creates assets (no fabrication) and skips duplicates.
+        Lookup priority: exact ``url`` asset → ``subdomain`` → ``host``.
+        """
+        try:
+            from lib.filtration import normalize_asset
+
+            candidates: list[tuple[str, str]] = []
+            raw = str(url or "").strip()
+            if raw:
+                candidates.append(("url", normalize_asset("url", raw)))
+                try:
+                    host = urlsplit(raw).hostname or ""
+                except ValueError:
+                    host = ""
+                if not host:
+                    host = raw.split("/")[0].split(":")[0]
+                if host:
+                    candidates.append(("subdomain", normalize_asset("subdomain", host)))
+                    candidates.append(("host", normalize_asset("host", host)))
+            for kind, normalized in candidates:
+                if not normalized:
+                    continue
+                asset = self.get_asset(kind, normalized)
+                if asset is None:
+                    continue
+                dup = self.query(
+                    "SELECT id FROM evidence_assets WHERE evidence_id = ? AND asset_id = ?",
+                    (evidence_id, asset["id"]),
+                )
+                if dup:
+                    return
+                self.set_evidence_asset(evidence_id, int(asset["id"]))
+                return
+        except Exception as exc:  # linkage must never break insertion
+            logger.debug("evidence asset auto-link skipped: %s", exc)
+
+    # -- identities / sessions (v2) -------------------------------------------
+
+    def insert_identity(
+        self,
+        scan_id: int,
+        name: str,
+        kind: str = "user",
+        credential_ref: str = "",
+    ) -> int:
+        cur = self.execute(
+            "INSERT INTO identities (scan_id, name, kind, credential_ref, created_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (scan_id, name, kind, credential_ref, _now()),
+        )
+        return int(cur.lastrowid)
+
+    def list_identities(self, scan_id: int) -> list[dict[str, Any]]:
+        return self.query(
+            "SELECT * FROM identities WHERE scan_id = ? ORDER BY id", (scan_id,)
+        )
+
+    def insert_auth_session(
+        self,
+        identity_id: int,
+        token_kind: str = "cookie",
+        state: str = "observed",
+        evidence_id: int | None = None,
+    ) -> int:
+        cur = self.execute(
+            "INSERT INTO auth_sessions (identity_id, token_kind, obtained_at, state,"
+            " evidence_id) VALUES (?, ?, ?, ?, ?)",
+            (identity_id, token_kind, _now(), state, evidence_id),
+        )
+        return int(cur.lastrowid)
+
+    # -- filtration stats (v2) -------------------------------------------------
+
+    def insert_filtration_stats(
+        self,
+        scan_id: int,
+        tool: str,
+        phase: str,
+        totals: dict[str, Any],
+        tool_run_id: int | None = None,
+    ) -> int:
+        cur = self.execute(
+            "INSERT INTO filtration_stats (scan_id, tool_run_id, tool, phase, totals,"
+            " created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (scan_id, tool_run_id, tool, phase, json.dumps(totals), _now()),
+        )
+        return int(cur.lastrowid)
+
+    def list_filtration_stats(self, scan_id: int) -> list[dict[str, Any]]:
+        rows = self.query(
+            "SELECT * FROM filtration_stats WHERE scan_id = ? ORDER BY id", (scan_id,)
+        )
+        for r in rows:
+            r["totals"] = json.loads(r.get("totals") or "{}")
+        return rows
+
+    # -- monitoring snapshots (v2) ---------------------------------------------
+
+    def insert_monitoring_snapshot(
+        self,
+        kind: str,
+        snapshot: dict[str, Any],
+        diff: dict[str, Any] | None = None,
+        schedule_id: int | None = None,
+    ) -> int:
+        cur = self.execute(
+            "INSERT INTO monitoring_snapshots (schedule_id, kind, taken_at, snapshot,"
+            " diff) VALUES (?, ?, ?, ?, ?)",
+            (schedule_id, kind, _now(), json.dumps(snapshot), json.dumps(diff or {})),
+        )
+        return int(cur.lastrowid)
+
+    def latest_monitoring_snapshot(self, kind: str) -> dict[str, Any] | None:
+        rows = self.query(
+            "SELECT * FROM monitoring_snapshots WHERE kind = ? ORDER BY id DESC LIMIT 1",
+            (kind,),
+        )
+        if not rows:
+            return None
+        row = rows[0]
+        row["snapshot"] = json.loads(row.get("snapshot") or "{}")
+        row["diff"] = json.loads(row.get("diff") or "{}")
+        return row
+
+    def backup_to(self, backup_path: str | Path) -> None:
+        """Backup the SQLite database using SQLite's online backup API."""
+        backup_path = Path(backup_path)
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(str(backup_path)) as dest_conn:
+            with self._lock:
+                self.conn.backup(dest_conn)
+        logger.info("database backed up successfully to %s", backup_path)
+
+    def restore_from(self, backup_path: str | Path) -> None:
+        """Restore the SQLite database from a backup file using SQLite's online backup API."""
+        backup_path = Path(backup_path)
+        if not backup_path.exists():
+            raise FileNotFoundError(f"Backup file not found: {backup_path}")
+        # Verify backup integrity first by connecting
+        try:
+            with sqlite3.connect(str(backup_path)) as src_conn:
+                src_conn.execute("PRAGMA integrity_check;")
+        except Exception as exc:
+            raise ValueError(f"Invalid or corrupted SQLite backup file: {exc}") from exc
+
+        with sqlite3.connect(str(backup_path)) as src_conn:
+            with self._lock:
+                src_conn.backup(self.conn)
+        logger.info("database restored successfully from %s", backup_path)
+
+    def insert_audit_event(
+        self,
+        actor: str,
+        action: str,
+        category: str = "system",
+        detail: str = "",
+    ) -> int:
+        cur = self.execute(
+            "INSERT INTO audit_events (ts, actor, action, category, detail)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (_now(), actor, action, category, detail[:300]),
+        )
+        return int(cur.lastrowid)
+
+    def list_audit_events(self, limit: int = 100, category: str | None = None) -> list[dict[str, Any]]:
+        if category is None:
+            return self.query(
+                "SELECT * FROM audit_events ORDER BY id DESC LIMIT ?", (int(limit),)
+            )
+        return self.query(
+            "SELECT * FROM audit_events WHERE category = ? ORDER BY id DESC LIMIT ?",
+            (category, int(limit)),
+        )

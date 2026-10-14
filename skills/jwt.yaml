@@ -1,0 +1,21 @@
+name: jwt
+purpose: Analyze JWT handling for detection-only weaknesses (none/weak alg, kid, exp).
+prerequisites:
+  - A scope-checked endpoint that issues or accepts JWTs
+inputs:
+  - observed token material as an evidence reference (never persisted raw)
+candidate_tools: [httpx, nuclei]
+execution_strategy:
+  - decode header/claims of observed tokens without tampering
+  - test signature-verification weaknesses with benign detection payloads only
+  - record which checks were accepted/rejected as evidence
+evidence_requirements:
+  - captured acceptance/rejection differential proving the weakness
+validation_requirements:
+  - deterministic verification via lib/verifier against captured evidence
+completion_criteria:
+  - each tested weakness classified, or explicitly recorded inconclusive
+safety_constraints:
+  - no token forgery beyond proof of acceptance; no privilege escalation
+  - payload guard enforced; tokens referenced via evidence rows only
+scope_required: true

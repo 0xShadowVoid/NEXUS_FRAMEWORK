@@ -1,0 +1,23 @@
+name: idor
+purpose: Detect IDOR/BOLA by comparing object access across identities.
+prerequisites:
+  - A scope-checked target with at least one object-identifying endpoint
+  - Operator-configured identities when differential proof is required
+inputs:
+  - candidate endpoints carrying object identifiers
+  - identity references (operator-configured; never inline secrets)
+candidate_tools: [httpx, ffuf, nuclei]
+execution_strategy:
+  - collect the baseline response for identity A
+  - replay with identity B and compare status/shape differentially
+  - capture the minimal proof pair (own vs other object reference)
+evidence_requirements:
+  - a response pair proving cross-object access with a single PII proof value
+validation_requirements:
+  - differential confirmation via lib/verifier (no live replay by default)
+completion_criteria:
+  - at least one differential pair captured, or explicitly recorded inconclusive
+safety_constraints:
+  - read-only; never modify other objects; no bulk enumeration
+  - payload guard enforced; identity material stays in evidence references only
+scope_required: true

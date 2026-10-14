@@ -146,3 +146,109 @@ def validate_scan_targets(targets: list[str], target_config: TargetConfig) -> li
         validate_target_scope(t, target_config)
         validated.append(t)
     return validated
+
+
+# ---------------------------------------------------------------------------
+# Pass 5 — IP / CIDR authorization helpers (network phase scope gate)
+# ---------------------------------------------------------------------------
+
+_METADATA_ADDRESSES = frozenset({"169.254.169.254", "fd00:ec2::254"})
+_FORBIDDEN_IP_CLASSES = frozenset({"private", "loopback", "link_local", "metadata"})
+
+
+def _canonical_ip(value: str):
+    """Parse an IP, normalizing IPv4-mapped IPv6 to IPv4. None if invalid."""
+    try:
+        ip = ipaddress.ip_address(str(value).strip())
+    except ValueError:
+        return None
+    if ip.version == 6 and getattr(ip, "ipv4_mapped", None):
+        ip = ip.ipv4_mapped
+    return ip
+
+
+def is_ip_literal(value: str) -> bool:
+    return _canonical_ip(str(value).split("/")[0]) is not None
+
+
+def classify_ip(value: str) -> str:
+    """public|private|loopback|link_local|metadata|multicast|reserved|unspecified|invalid."""
+    ip = _canonical_ip(str(value).split("/")[0])
+    if ip is None:
+        return "invalid"
+    if str(ip) in _METADATA_ADDRESSES:
+        return "metadata"
+    if ip.is_loopback:
+        return "loopback"
+    if ip.is_link_local:
+        return "link_local"
+    if ip.is_private:
+        return "private"
+    if ip.is_multicast:
+        return "multicast"
+    if ip.is_unspecified:
+        return "unspecified"
+    if ip.is_reserved:
+        return "reserved"
+    return "public"
+
+
+def explicit_ip_grant(value: str, target_config: TargetConfig) -> str:
+    """Return the in-scope ip/CIDR entry covering *value* ("" if none)."""
+    ip = _canonical_ip(str(value).split("/")[0])
+    if ip is None:
+        return ""
+    for entry in target_config.in_scope:
+        e = (entry or "").strip()
+        if not e:
+            continue
+        try:
+            network = ipaddress.ip_network(e, strict=False)
+        except ValueError:
+            continue
+        if ip in network:
+            return e
+    return ""
+
+
+def ip_allowed_for_target(
+    ip_value: str,
+    target_config: TargetConfig,
+    *,
+    allow_private: bool = False,
+    require_grant: bool = False,
+) -> tuple[bool, str]:
+    """Engagement-policy gate for one target IP (explicit authorization only).
+
+    - loopback / link-local / private / metadata addresses require an EXPLICIT
+      in-scope ip/CIDR grant AND ``allow_private`` (two-key authorization);
+    - IP-literal targets additionally require a grant (``require_grant``);
+    - multicast / reserved / unspecified are never scannable;
+    - explicit out-of-scope networks always win.
+    """
+    ip = _canonical_ip(str(ip_value).split("/")[0])
+    if ip is None:
+        return False, "not an IP address"
+    for entry in target_config.out_of_scope:
+        e = (entry or "").strip()
+        if not e:
+            continue
+        try:
+            if ip in ipaddress.ip_network(e, strict=False):
+                return False, f"explicitly out of scope ({e})"
+        except ValueError:
+            continue
+    category = classify_ip(str(ip))
+    grant = explicit_ip_grant(str(ip), target_config)
+    if category in _FORBIDDEN_IP_CLASSES:
+        if not (grant and allow_private):
+            return False, (
+                f"{category} address requires an explicit in-scope ip/CIDR grant "
+                "plus allow_private"
+            )
+        return True, f"explicitly authorized ({grant})"
+    if category in ("multicast", "reserved", "unspecified"):
+        return False, f"{category} address is not scannable"
+    if require_grant and not grant:
+        return False, "IP-literal target requires an explicit in-scope ip/CIDR entry"
+    return True, f"explicitly authorized ({grant})" if grant else "public address of in-scope host"

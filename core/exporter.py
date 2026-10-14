@@ -18,10 +18,12 @@ from typing import Any
 from lib.logger import get_logger
 from lib.paths import EXPORTS_BASE
 from lib.utils import sanitize_path_component
+from lib.version import framework_version
 
 logger = get_logger("exporter")
 
-NEXUS_VERSION = "1.0.0"
+# Single source of truth (Pass 3B §5): read from the repo VERSION file.
+NEXUS_VERSION = framework_version()
 
 _METADATA_NAME = "metadata.json"
 _FINDINGS_NAME = "findings.json"

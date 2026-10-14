@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from urllib.parse import urljoin
 
 import requests
 
 from lib.logger import get_logger
+from lib.ssrf_guard import is_safe_url
 
 logger = get_logger("wappalyzer_wrapper")
 
@@ -77,10 +79,16 @@ def detect_from_response(url: str, headers: dict[str, str], body: str) -> dict[s
 class WappalyzerWrapper:
     """Fetches target pages and detects the tech stack."""
 
-    def __init__(self, session: requests.Session | None = None, timeout: tuple[int, int] = _TIMEOUT):
+    def __init__(
+        self,
+        session: requests.Session | None = None,
+        timeout: tuple[int, int] = _TIMEOUT,
+        ssrf_allow: set[str] | None = None,
+    ):
         self.session = session or requests.Session()
         self.session.headers.update({"User-Agent": _UA})
         self.timeout = timeout
+        self.ssrf_allow = ssrf_allow or set()
 
     def detect(
         self,
@@ -93,8 +101,14 @@ class WappalyzerWrapper:
         paths = [""] + list(extra_paths or [])
         for path in paths:
             target = url.rstrip("/") + path
+            safe, reason = is_safe_url(target, allow=self.ssrf_allow)
+            if not safe:
+                logger.warning("ssrf guard blocked %s: %s", target, reason)
+                continue
             try:
-                resp = self.session.get(target, timeout=self.timeout, headers=headers)
+                resp = self._fetch(target, headers)
+                if resp is None:
+                    continue
                 found = detect_from_response(target, dict(resp.headers), resp.text or "")
                 for tech, version in found.items():
                     if tech not in aggregate or (version and not aggregate[tech]):
@@ -103,11 +117,34 @@ class WappalyzerWrapper:
                 logger.debug("tech fetch failed for %s: %s", target, exc)
         return {"url": url, "tech": aggregate}
 
+    def _fetch(self, url: str, headers: dict[str, str] | None, max_hops: int = 5):
+        """GET with manual redirects — every hop is re-checked by the guard.
+
+        Returns the response, or ``None`` when a redirect hop is blocked.
+        """
+        current = url
+        for _hop in range(max_hops + 1):
+            resp = self.session.get(
+                current, timeout=self.timeout, headers=headers, allow_redirects=False
+            )
+            if resp.status_code not in (301, 302, 303, 307, 308):
+                return resp
+            location = str((resp.headers or {}).get("Location") or "")
+            if not location:
+                return resp
+            current = urljoin(current, location)
+            safe, reason = is_safe_url(current, allow=self.ssrf_allow)
+            if not safe:
+                logger.warning("ssrf guard blocked redirect hop %s: %s", current, reason)
+                return None
+        return None
+
 
 def detect_tech(
     url: str,
     responses: list[tuple[str, dict[str, str], str]] | None = None,
     session: requests.Session | None = None,
+    ssrf_allow: set[str] | None = None,
 ) -> dict[str, Any]:
     """Convenience entry: detect from live fetch or supplied responses."""
     if responses:
@@ -117,4 +154,4 @@ def detect_tech(
                 if tech not in aggregate or (version and not aggregate[tech]):
                     aggregate[tech] = version
         return {"url": url, "tech": aggregate}
-    return WappalyzerWrapper(session=session).detect(url)
+    return WappalyzerWrapper(session=session, ssrf_allow=ssrf_allow).detect(url)
