@@ -1,0 +1,140 @@
+# Configuration Reference
+
+All runtime configuration lives in `config/nexus.yaml` (committed defaults) and
+`config/.keys.env` (your secrets, git-ignored, created from `config/.keys.env.example`).
+
+`${VAR}` placeholders inside `nexus.yaml` resolve from `config/.keys.env` first, then from the
+OS environment. Missing variables resolve to the empty string so the framework degrades
+gracefully offline.
+
+## `scanning:`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `default_intensity` | `quick-scan` | intensity used when a target does not override it |
+| `tool_timeout_seconds` | `300` | per external-tool invocation timeout |
+| `rate_limit_default` | `50/minute` | rate limit when a target does not define one |
+| `request_budget` | `0` | positive N caps requests per scan (0 = unlimited) |
+| `probe_max_urls` | `50` | HTTP collector budget per scan |
+| `ssrf_allow` | `[]` | hosts explicitly permitted despite resolving to private IPs |
+| `dorking_engines` | `[duckduckgo, github]` | scraping engines (off unless enabled) |
+
+## `phases:`
+
+| Phase key | Default | Notes |
+|---|---|---|
+| `discover.enabled` | `true` | `tools:` selects discover tools |
+| `probe.enabled` | `true` | `default_tools: [nuclei, dalfox]` |
+| `hunt.enabled` | `false` | auto-hunt stays off by design |
+| `control.enabled` | `false` | C2 bot off by design |
+| `scale.enabled` | `false` | scaffold only |
+| `network.*` | enabled, gated | `ports: []` (conservative default set), `concurrency: 16`, `connect_timeout: 1.5`, `probe_timeout: 2.0`, `max_ports: 512`, `allow_private: false` |
+| `cloud.*` | enabled, gated | `providers: []`, `accounts: {}` (fails closed when empty), `max_resources: 200`, optional `region` / `project` hints |
+
+`network` and `cloud` also require explicit scope (an in-scope IP grant / `scope_kind: cloud`
+target). See [SECURITY.md](SECURITY.md) and [PHASES.md](PHASES.md).
+
+## `targets:`
+
+Map of target key → per-target settings. Example (samples in the file are placeholders —
+replace with your own authorized targets):
+
+```yaml
+targets:
+  lab.local:
+    intensity: quick-scan          # quick-scan | full-scan | deep
+    tools: [nuclei, dalfox]        # empty = profile default
+    rate_limit: "50/minute"
+    in_scope: [lab.local, 127.0.0.1]
+    out_of_scope: []
+```
+
+| Key | Meaning |
+|---|---|
+| `intensity` | tool-profile selector (`quick-scan` / `full-scan` / `deep`) |
+| `tools` | explicit tool list; overrides profile membership |
+| `rate_limit` | per-target rate limit string |
+| `cookie` | session cookie passed to authenticated checks (stored locally, never committed) |
+| `in_scope` | the only hosts/URLs testable for this target |
+| `out_of_scope` | hard exclusions — win over `in_scope` |
+
+## `schedules:`
+
+Named schedule entries used by `python -m nexus serve`:
+
+```yaml
+schedules:
+  my_daily:
+    target: lab.local
+    frequency: daily          # daily | weekly | cron (via --cron)
+    time: "02:00"
+    intensity: full-scan
+```
+
+## `webhooks:` / `email:`
+
+Discord findings/CVE/metrics webhook URLs, Telegram bot token + chat id, and SMTP settings —
+all via `${...}` references into `.keys.env`. Without values, notifications are skipped.
+
+## `ai:`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `provider` | `openai` | one of `openai, glm, deepseek, gemini, kimi, openrouter, custom` (ollama needs no key) |
+| `fallback_providers` | `[glm, deepseek, ...]` | tried in order on failure |
+| `model` / `strong_model` | `""` | empty = provider default; strong model for chains/reports |
+| `max_calls` | `0` | per-run AI call budget (0 = unlimited) |
+| `base_url` | `""` | override, or `<PROVIDER>_BASE_URL` / `CUSTOM_BASE_URL` env |
+
+## `cve:`
+
+`auto_update: true`, `frequency: daily`, `time: "02:00"`, `alert_severity: [critical, high]`,
+`script_delivery: [email, discord]`, `use_kev: true` (CISA KEV), `use_epss: true`.
+
+## `c2_bot:`
+
+`enabled: true` in config, but the `control` phase itself is off by default; channels
+`[discord, telegram]`, `use_same_webhook: true`.
+
+## `nemesis:`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` | additive reasoning layer |
+| `memory.enabled` | `true` | local SQLite engagement memory |
+| `skills.enabled` | `[]` | **no skill is auto-enabled**; list names to activate (see [SKILLS_REFERENCE.md](SKILLS_REFERENCE.md)) |
+| `browser.enabled` | `false` | Playwright browser automation (off by default) |
+| `mcp.enabled` | `false` | external MCP tools (off by default) |
+
+## `results:` / `database:`
+
+`base_dir: results`, `exports_dir: exports`, `database.path: nexus.db`.
+
+## Environment variables
+
+Secrets and credentials (all optional; set in `config/.keys.env`):
+
+```
+DISCORD_FINDINGS_WEBHOOK, DISCORD_CVE_WEBHOOK, DISCORD_METRICS_WEBHOOK
+TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, ALERT_EMAIL_FROM, ALERT_EMAIL_TO
+HACKERONE_API_USERNAME, HACKERONE_API_TOKEN, BUGCROWD_API_KEY
+INTIGRITI_API_KEY, YESWEHACK_API_KEY
+NVD_API_KEY, GITHUB_TOKEN
+OPENAI_API_KEY, GLM_API_KEY, DEEPSEEK_API_KEY, GEMINI_API_KEY,
+KIMI_API_KEY, OPENROUTER_API_KEY, CUSTOM_API_KEY, CUSTOM_BASE_URL
+DISCORD_BOT_TOKEN, C2_OWNER_ID
+```
+
+Framework variables (set in the OS environment, never in files):
+
+| Variable | Meaning |
+|---|---|
+| `NEXUS_GUI_USER` / `NEXUS_GUI_PASS` | Local GUI administrator credentials. If unset the GUI **fails closed** (HTTP 503). |
+| `NEXUS_VERSION` | Read-only override used by some test harnesses; normally derived from `VERSION`. |
+
+## Startup failures
+
+`load_config()` raises `ConfigError` for malformed YAML or an unreadable config directory —
+`python -m nexus doctor` reports the exact cause. Missing `${VAR}` values do **not** fail
+startup; the related integration simply stays inactive.
