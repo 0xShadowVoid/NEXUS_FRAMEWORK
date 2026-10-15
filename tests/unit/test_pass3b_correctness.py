@@ -8,8 +8,12 @@ from lib.version import framework_version
 
 
 def test_version_single_source():
-    assert (REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip() == "2.0.0"
-    assert framework_version() == "2.0.0"
+    from lib.version import _FALLBACK
+
+    on_disk = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip()
+    assert on_disk == _FALLBACK
+    assert framework_version() == on_disk
+    assert on_disk == "2.0.1"  # 2.0.1 release (security-hardening-pass9 merge)
 
 
 def test_exporter_uses_framework_version(tmp_path):
@@ -17,13 +21,13 @@ def test_exporter_uses_framework_version(tmp_path):
 
     assert exporter.NEXUS_VERSION == framework_version()
     meta = exporter._metadata("example.com", [{"id": 1}], [{"id": 1}, {"id": 2}])
-    assert meta["version"] == "2.0.0"
+    assert meta["version"] == framework_version()
 
     path = exporter.export_sarif(
         "example.com", [{"vuln_type": "xss", "severity": "P2"}], out_base=tmp_path
     )
     doc = json.loads(path.read_text(encoding="utf-8"))
-    assert doc["runs"][0]["tool"]["driver"]["version"] == "2.0.0"
+    assert doc["runs"][0]["tool"]["driver"]["version"] == framework_version()
 
 
 def test_cli_version_string(capsys):
@@ -33,7 +37,7 @@ def test_cli_version_string(capsys):
     with pytest.raises(SystemExit) as exc:
         nexus.main(["--version"])
     assert exc.value.code == 0
-    assert "NEXUS 2.0.0" in capsys.readouterr().out
+    assert "NEXUS 2.0.1" in capsys.readouterr().out
 
 
 def test_c2_frontends_import_and_default_routers():

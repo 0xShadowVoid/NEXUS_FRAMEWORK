@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexus-framework"
-version = "2.0.0"
+version = "2.0.1"
 description = "NEXUS — Unified Bug Bounty Automation Framework"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -15,6 +15,9 @@ dependencies = [
     "requests>=2.31",
     "croniter>=2.0",
     "py7zr>=0.21",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "pydantic>=2.6",
 ]
 
 [project.optional-dependencies]
@@ -25,6 +28,7 @@ dev = ["pytest>=8.0"]
 nexus = "nexus:main"
 
 [tool.setuptools]
+py-modules = ["nexus"]
 packages = [
     "lib",
     "core",
@@ -43,6 +47,15 @@ packages = [
     "lib.nemesis",
 ]
 include-package-data = true
+
+[tool.setuptools.data-files]
+"config" = ["config/nexus.yaml", "config/tools.yaml", "config/methodologies.yaml", "config/false_positive_filters.yaml", "config/.keys.env.example"]
+"skills" = ["skills/idor.yaml", "skills/jwt.yaml", "skills/recon.yaml", "skills/report.yaml", "skills/triage.yaml", "skills/web_hunt.yaml"]
+"templates/reports" = ["templates/reports/bugcrowd.md", "templates/reports/generic.md", "templates/reports/hackerone.md", "templates/reports/intigriti.md"]
+"templates/nuclei-custom" = ["templates/nuclei-custom/readme.md"]
+
+[tool.setuptools.package-data]
+"*" = ["*.yaml", "*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

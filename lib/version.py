@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from lib.paths import REPO_ROOT
 
-_FALLBACK = "2.0.0"
+_FALLBACK = "2.0.1"
 
 
 def framework_version() -> str:

@@ -25,8 +25,9 @@ from core.database import Database
 from lib.config import Config, load_config
 from lib.scope_validator import validate_target_scope
 from core.sanitizer import sanitize_evidence
+from lib.version import framework_version
 
-app = FastAPI(title="NEXUS Security Framework GUI", version="3.7.0")
+app = FastAPI(title="NEXUS Security Framework GUI", version=framework_version())
 security = HTTPBasic()
 
 # In-memory session / token store for secure web interaction
