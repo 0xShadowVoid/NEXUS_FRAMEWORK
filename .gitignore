@@ -1,5 +1,5 @@
-# ============================================================
-# NEXUS Framework — .gitignore
+﻿# ============================================================
+# NEXUS Framework â€” .gitignore
 # ============================================================
 
 # --- Secrets: NEVER commit ---
@@ -59,3 +59,9 @@ Desktop.ini
 # --- Local notes (keep spec docs, ignore scratch) ---
 *.local.md
 TODO.local.md
+
+# --- Local agent/IDE instruction files (machine-specific) ---
+.claude/
+CLAUDE.md
+AGENTS.md
+GEMINI.md
