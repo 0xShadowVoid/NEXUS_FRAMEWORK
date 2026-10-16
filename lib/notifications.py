@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 import requests
 
 from lib.logger import get_logger
+from lib.redaction import redact_text
 from lib.ssrf_guard import is_safe_url
 
 logger = get_logger("notifications")
@@ -141,39 +142,81 @@ class NotificationFormatter:
         )
 
 
+def _endpoint_label(url: str) -> str:
+    """Return a non-secret destination label (scheme + host only).
+
+    Webhook and Telegram URLs carry the token in their path/query, so the
+    raw URL must never be logged; the host is enough to identify the
+    provider in diagnostics.
+    """
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "?"
+    host = parts.hostname or "?"
+    return f"{parts.scheme}://{host}" if parts.scheme else host
+
+
+def _redact_detail(exc: BaseException) -> str:
+    """Render an exception for logs with every recognizable secret removed."""
+    return redact_text(f"{type(exc).__name__}: {exc}")
+
+
 def _post_with_retry(url: str, json_payload: dict[str, Any]) -> bool:
-    """POST with best-effort retry; returns True on 2xx. Never raises."""
+    """POST with best-effort retry; returns True on 2xx. Never raises.
+
+    Diagnostics are limited to provider/operation/status/category. The
+    destination URL (which embeds the webhook/bot token), request headers
+    and payload/response bodies are never logged, and any exception text
+    is passed through :func:`lib.redaction.redact_text` first.
+    """
     if not url:
         logger.debug("no endpoint configured; skipping send")
         return False
+    endpoint = _endpoint_label(url)
     safe, reason = is_safe_url(url, allow=_SSRF_ALLOW)
     if not safe:
         # Never log the full webhook URL (it contains a token): host only.
-        host = urlsplit(url).hostname or "?"
-        logger.warning("ssrf guard blocked alert endpoint host=%s: %s", host, reason)
+        logger.warning(
+            "ssrf guard blocked alert endpoint host=%s: %s", endpoint, redact_text(reason)
+        )
         return False
-    last_error: Exception | None = None
+    status: int | None = None
+    category = "unknown_error"
+    last_error: BaseException | None = None
     for _attempt in range(_MAX_RETRIES):
         try:
             resp = requests.post(url, json=json_payload, timeout=_HTTP_TIMEOUT)
-            if resp.status_code in (200, 204):
+            status = getattr(resp, "status_code", None)
+            if status in (200, 204):
                 return True
-            if resp.status_code == 429:
+            if status == 429:
+                category = "rate_limited"
+                headers = getattr(resp, "headers", None) or {}
                 retry_after = 1.0
                 for header in ("Retry-After", "retry-after"):
-                    if header in resp.headers:
-                        try:
-                            retry_after = float(resp.headers[header])
-                        except ValueError:
-                            pass
-                        break
+                    try:
+                        if header in headers:
+                            retry_after = float(headers[header])
+                            break
+                    except (TypeError, ValueError):
+                        continue
                 time.sleep(min(retry_after, _RETRY_CAP_SECONDS))
                 continue
-            last_error = NotificationError(f"HTTP {resp.status_code} from {url.split('?')[0]}")
+            if status is None:
+                category = "malformed_response"
+                last_error = NotificationError("response without HTTP status")
+            else:
+                category = "http_error"
+                last_error = NotificationError(f"HTTP {status}")
         except requests.RequestException as exc:
+            category = "connection_error"
             last_error = exc
-    if last_error:
-        logger.warning("send failed: %s", last_error)
+    if last_error is not None:
+        logger.warning(
+            "notification send failed: provider=%s category=%s status=%s detail=%s",
+            endpoint, category, status, _redact_detail(last_error),
+        )
     return False
 
 
@@ -324,7 +367,7 @@ def smtp_send(
             server.send_message(msg)
         return True
     except (smtplib.SMTPException, OSError) as exc:
-        smtp_logger.warning("email send failed: %s", exc)
+        smtp_logger.warning("email send failed: %s", _redact_detail(exc))
         return False
 
 
