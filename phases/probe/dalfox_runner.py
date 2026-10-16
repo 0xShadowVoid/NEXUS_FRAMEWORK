@@ -74,7 +74,7 @@ def run_dalfox(
     if cookie:
         args.extend(["--cookie", cookie])
 
-    result = runner.run("dalfox", args)
+    result = runner.run("dalfox", args, targets=urls)
     if result.status in ("not_found", "skipped"):
         logger.info("dalfox not available; skipping (%s)", result.status)
         return []

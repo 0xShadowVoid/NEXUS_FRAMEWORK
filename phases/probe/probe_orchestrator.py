@@ -57,7 +57,16 @@ def run_probe(
         rate_limit=target_config.rate_limit,
         rate_key=target_config.domain,
         cfg=cfg,
+        target_config=target_config,
     )
+
+    # Scope handoff boundary: only in-scope, well-formed URLs are ever written
+    # to a tool input file or passed on the command line. Out-of-scope URLs
+    # discovered by recon are dropped here (logged, host-only) before any
+    # external tool runs — the initial seed-target check is not sufficient.
+    from lib.scope_validator import filter_targets
+
+    urls = filter_targets(urls, target_config, context="probe")
 
     raw_findings: list[dict[str, Any]] = []
     target = target_config.domain

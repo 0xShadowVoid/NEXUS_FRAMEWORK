@@ -47,7 +47,7 @@ class _Runner:
     def tool_available(self, tool: str) -> bool:
         return self._available
 
-    def run(self, tool, args, stdin_data=None, env=None):
+    def run(self, tool, args, stdin_data=None, env=None, targets=None):
         self.calls.append((tool, args))
 
         class _R:
@@ -67,7 +67,7 @@ def test_screenshot_naming_when_tool_present(tmp_path: Path):
     (tmp_path / "shot.png").write_bytes(b"\x89PNG")
 
     class _RunnerWithFile(_Runner):
-        def run(self, tool, args, stdin_data=None, env=None):
+        def run(self, tool, args, stdin_data=None, env=None, targets=None):
             self.calls.append((tool, args))
             (tmp_path / "out.png").write_bytes(b"\x89PNG")
 

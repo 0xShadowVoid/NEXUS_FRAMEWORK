@@ -13,7 +13,8 @@ enforces technical scope, not legal permission.
 
 | Control | Implementation |
 |---|---|
-| Target scope | `lib/scope_validator.py` — the scan target and the internal HTTP collector are validated against the active target's `in_scope`; `out_of_scope` entries always win. Set `in_scope` to cover every host you are authorized to test (see the note below). |
+| Target scope | `lib/scope_validator.py` — the scan target, the internal HTTP collector, **and every target handed to an external tool** are validated against the active target's `in_scope`; `out_of_scope` entries always win. See the semantics note below. |
+| External-tool handoff | `phases/probe/tool_runner.py` re-validates every target/URL immediately before spawning an external tool (scope guard fails closed → the tool is skipped, nothing reaches the subprocess). URL lists written for nuclei/dalfox/httpx/dnsx are scope-filtered first. |
 | Private-IP protection | loopback/private/link-local/metadata addresses need an explicit in-scope IP grant (network phase additionally needs `phases.network.allow_private`) |
 | SSRF protection | `lib/ssrf_guard.py` — applied to every outbound HTTP path, including redirect chains and provider/AI endpoints |
 | Payload boundary | `lib/payload_guard.py` — destructive SQL, reverse shells, download-and-execute, and webshell payloads are rejected |
@@ -24,14 +25,30 @@ enforces technical scope, not legal permission.
 | Cloud phases | identity verified against a mandatory per-provider account allowlist **before any other API call**; read-only checks only; empty allowlist = zero calls |
 | Audit trail | finding transitions, evidence provenance (tool, source, phase), and scan records in SQLite |
 
-> **Scope boundary — read this.** The hard scope gate validates the primary scan target, and the
-> built-in HTTP collector validates the scope of every URL it requests. Recon (`discover`) can
-> surface third-party hosts (for example via dorking), and those URLs are handed to the optional
-> external tools (nuclei, dalfox, sqlmap, …) that you install yourself. NEXUS does not re-filter
-> each of those URLs per host before the external tool runs. Configure `in_scope`/`out_of_scope`
-> correctly, prefer tools you trust, and review the recon output before enabling active probing.
-> Out-of-scope findings are marked `OUT_OF_SCOPE` and excluded from drafts, alerts, and chains,
-> but they are still written to the raw findings/report so you can audit what was seen.
+## Scope semantics — read this
+
+Scope is enforced **before any traffic**, again **before any external-tool handoff**, and on
+**every HTTP redirect hop**. In-scope is determined only by `in_scope`; `out_of_scope` always
+wins. NEXUS never broadens authorization implicitly:
+
+- **Exact host** — `in_scope: [example.com]` authorizes `example.com` only. Subdomains are **not**
+  implied: `api.example.com` is out of scope. To test subdomains, authorize them explicitly with
+  `*.example.com` (covers the apex and all subdomains).
+- **Anchored wildcards** — `*.example.com` matches `example.com` and `a.b.example.com` but never
+  `example.com.attacker.test` or `evilexample.com`.
+- **Ports** are ignored for host matching (a host is authorized regardless of port); restrict
+  ports separately via the network phase.
+- **IP literals** require an explicit `in_scope` exact entry or CIDR (e.g. `10.0.0.0/24`).
+  Unlisted IPs fail closed; private/loopback/metadata addresses additionally require the network
+  phase's two-key grants.
+- **Malformed input** (spaces, backslashes, `user@` userinfo tricks, bare paths) is rejected.
+
+Recon (`discover`) can surface third-party hosts (for example via dorking). Those discovered
+URLs/hosts are filtered at every external-tool handoff: out-of-scope entries are dropped from the
+tool input lists (`urls.txt`, `domains.txt`) and never reach nuclei, dalfox, sqlmap, httpx, dnsx,
+ffuf, katana, gowitness, subdominator, etc. The full discovered set is still recorded in the recon
+summary for audit. Out-of-scope findings are marked `OUT_OF_SCOPE` and excluded from drafts,
+alerts, and chains, but remain in the raw findings/report so you can audit what was seen.
 
 ## Default-off surfaces
 

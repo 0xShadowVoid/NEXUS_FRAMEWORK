@@ -111,7 +111,7 @@ def run_nuclei(
         "-jsonl",
         "-silent",
     ]
-    result = runner.run("nuclei", args)
+    result = runner.run("nuclei", args, targets=urls)
     findings: list[dict[str, Any]] = []
     if result.status in ("not_found", "skipped"):
         logger.info("nuclei not available; skipping (%s)", result.status)

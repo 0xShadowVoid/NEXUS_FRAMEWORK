@@ -105,7 +105,7 @@ def test_discover_orchestrator_writes_artifacts(tmp_cfg: Config, tmp_path: Path,
     # Stub out network-touching pieces.
     monkeypatch.setattr(
         "phases.discover.recon_orchestrator.run_pegpon",
-        lambda domain, runner, results_dir, with_subdomains=True: {
+        lambda domain, runner, results_dir, with_subdomains=True, **kwargs: {
             "subdomains": [domain, "api." + domain],
             "urls": [f"https://{domain}/", f"https://api.{domain}/v1"],
             "tools_run": ["subfinder"], "tools_skipped": [], "tools_failed": [],

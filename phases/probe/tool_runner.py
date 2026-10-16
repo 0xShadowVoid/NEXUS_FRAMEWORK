@@ -1,11 +1,13 @@
 """Base tool-runner: safe subprocess execution for external tools.
 
-SECURITY BOUNDARY: every command passes through
-:func:`lib.payload_guard.validate_tool_command` before execution; no
-``shell=True``; every run has a timeout; output is captured to the
-scan directory. Tools are expected to be on PATH or explicitly
-configured — absence degrades per mode (light: skip+continue,
-deep: retry ×3 then skip).
+SECURITY BOUNDARY: every command passes the scope handoff guard
+(:func:`lib.scope_validator.host_in_scope` over the invocation's targets and
+URL tokens) and :func:`lib.payload_guard.validate_tool_command` before
+execution; no ``shell=True``; every run has a timeout; output is captured
+to the scan directory. Out-of-scope or malformed targets fail closed
+(status ``skipped``) and never reach the subprocess. Tools are expected to
+be on PATH or explicitly configured — absence degrades per mode (light:
+skip+continue, deep: retry ×3 then skip).
 """
 from __future__ import annotations
 
@@ -21,6 +23,7 @@ from lib.logger import get_logger
 from lib.ops_guard import spend_requests
 from lib.payload_guard import validate_tool_command
 from lib.rate_limiter import RateLimiter
+from lib.scope_validator import extract_host, host_in_scope, iter_handoff_targets
 
 logger = get_logger("tool_runner")
 
@@ -44,6 +47,7 @@ class ToolResult:
     duration_seconds: float = 0.0
     status: str = "ok"            # ok | timeout | not_found | error | skipped
     attempts: int = 0
+    reason: str = ""              # why a run was skipped (e.g. out of scope)
 
     @property
     def ok(self) -> bool:
@@ -61,12 +65,17 @@ class ToolRunner:
         rate_limit: str = "",
         rate_key: str = "",
         cfg: Any = None,
+        target_config: Any = None,
     ):
         self.timeout = timeout
         self.deep_mode = deep_mode
         # Optional Config — when present, every run() consults the tool
         # registry for enabled/provider/timeout/retries (Pass 3A choke point).
         self._cfg = cfg
+        # Optional TargetConfig — when present, every run() re-validates the
+        # targets it is about to hand to an external tool against scope (the
+        # central handoff boundary; fails closed on any OOS/malformed target).
+        self._target_config = target_config
         self.results_dir = results_dir
         self.rate_limit = rate_limit or ""
         self.rate_key = rate_key or ""
@@ -92,20 +101,61 @@ class ToolRunner:
         """True when the tool binary is on PATH."""
         return shutil.which(tool) is not None
 
+    def _scope_reject(self, args: list[str], targets: list[str] | None) -> str | None:
+        """Return a rejection reason when any handoff target is out of scope.
+
+        Scope is re-checked immediately before the external tool runs — never
+        relying on the initial seed-target validation. Applies to explicit
+        ``targets`` (bare hosts/domains) and to unambiguous ``scheme://`` URL
+        tokens in ``args``. Fail closed: a malformed target is rejected too.
+        """
+        tc = self._target_config
+        if tc is None:
+            return None
+        candidates: list[str] = []
+        if targets:
+            candidates.extend(str(t) for t in targets)
+        candidates.extend(iter_handoff_targets(args))
+        for cand in candidates:
+            host = extract_host(cand)
+            if not host:
+                return f"malformed target {cand!r}"
+            if not host_in_scope(host, tc):
+                return f"target host {host!r} is out of scope"
+        return None
+
     def run(
         self,
         tool: str,
         args: list[str],
         stdin_data: str | None = None,
         env: dict[str, str] | None = None,
+        targets: list[str] | None = None,
     ) -> ToolResult:
-        """Run a tool. Light mode: skip on failure. Deep: retry ×3."""
+        """Run a tool. Light mode: skip on failure. Deep: retry ×3.
+
+        ``targets`` are the concrete target/URL/host values this invocation
+        hands to the external tool (bare hosts must be passed here; ``args``
+        URL tokens are also scanned). When the runner has a ``target_config``,
+        every target is re-validated against scope and the whole command is
+        skipped (fail closed) if any is out of scope or malformed.
+        """
         cmd = [tool] + [str(a) for a in args]
+
+        reject = self._scope_reject(args, targets)
+        if reject is not None:
+            logger.warning("scope guard blocked %s handoff: %s", tool, reject)
+            return ToolResult(
+                tool=tool, cmd=cmd, returncode=None, status="skipped", reason=reject
+            )
 
         allowed, reason = validate_tool_command(cmd)
         if not allowed:
             logger.warning("blocked tool command (%s): %s", reason, cmd)
-            return ToolResult(tool=tool, cmd=cmd, returncode=None, status="skipped")
+            return ToolResult(
+                tool=tool, cmd=cmd, returncode=None, status="skipped",
+                reason=f"payload guard: {reason}",
+            )
 
         # Registry choke point (Pass 3A): per-tool `enabled`, provider-key
         # availability, `timeout` and `retries` from config/tools.yaml apply

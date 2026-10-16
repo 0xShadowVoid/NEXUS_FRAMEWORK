@@ -59,12 +59,16 @@ def run_discover(
         rate_limit=target_config.rate_limit,
         rate_key=domain,
         cfg=cfg,
+        target_config=target_config,
     )
 
     summary: dict[str, Any] = {"domain": domain, "deep": deep}
 
     # 1. Pegpon light set (always).
-    pegpon = run_pegpon(domain, runner, results_dir, with_subdomains=with_subdomains)
+    pegpon = run_pegpon(
+        domain, runner, results_dir,
+        with_subdomains=with_subdomains, target_config=target_config,
+    )
     summary["pegpon"] = pegpon
 
     # 2. Multi-engine dorking (default on).
@@ -94,7 +98,7 @@ def run_discover(
     # 4. BBot (deep scan only, requires pegpon).
     bbot: dict[str, Any] = {"status": "skipped", "reason": "light scan"}
     if deep:
-        bbot = run_bbot(domain, runner, results_dir)
+        bbot = run_bbot(domain, runner, results_dir, target_config=target_config)
     summary["bbot"] = bbot
 
     # Tool-registry view for this run (Pass 3A): truthful selection and

@@ -106,7 +106,7 @@ def run_sqlmap(
                     "--flush-session", "--output-dir", str(out_dir)]
         if cookie:
             args.extend(["--cookie", cookie])
-        result = runner.run("sqlmap", args)
+        result = runner.run("sqlmap", args, targets=[url])
         if result.status in ("not_found", "skipped"):
             logger.info("sqlmap not available; skipping (%s)", result.status)
             return []

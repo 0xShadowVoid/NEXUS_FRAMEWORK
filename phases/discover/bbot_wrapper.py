@@ -28,6 +28,7 @@ def run_bbot(
     runner: ToolRunner,
     results_dir: Path,
     force: bool = False,
+    target_config: Any | None = None,
 ) -> dict[str, Any]:
     """Run bbot (deep scan only). Requires pegpon output first.
 
@@ -51,6 +52,7 @@ def run_bbot(
     result = runner.run(
         "bbot",
         ["-t", domain, "-p", "subdomain-enum", "-f", "json", "-o", str(out_dir)],
+        targets=[domain],
     )
     summary: dict[str, Any] = {
         "status": "ok" if result.ok else result.status,

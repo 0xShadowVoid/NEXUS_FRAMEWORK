@@ -101,7 +101,7 @@ def test_dork_ingest_uses_urls_not_intent_keys(tmp_path, monkeypatch):
     db = Database(tmp_path / "dork.db")
     from phases.discover import recon_orchestrator
 
-    def fake_pegpon(domain, runner, results_dir, with_subdomains=True):
+    def fake_pegpon(domain, runner, results_dir, with_subdomains=True, **kwargs):
         return {"subdomains": [domain], "urls": [], "tools_run": [],
                 "tools_skipped": [], "tools_failed": []}
 

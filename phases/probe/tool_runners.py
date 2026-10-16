@@ -39,7 +39,7 @@ def run_commix(target: str, responses: list[dict[str, Any]], runner: ToolRunner,
         args = ["-u", url, "--batch", "--level=1"]
         if cookie:
             args.extend(["--cookie", cookie])
-        result = runner.run("commix", args)
+        result = runner.run("commix", args, targets=[url])
         if result.status in ("not_found", "skipped"):
             return []
         if re.search(r"(?i)the target.*is vulnerable", result.stdout):
@@ -53,7 +53,7 @@ def run_ghauri(target: str, urls: list[str], runner: ToolRunner, deep: bool) -> 
         return []
     findings = []
     for url in urls[:50]:
-        result = runner.run("ghauri", ["-u", url, "--batch", "--dbs=0"])
+        result = runner.run("ghauri", ["-u", url, "--batch", "--dbs=0"], targets=[url])
         if result.status in ("not_found", "skipped"):
             return []
         if re.search(r"(?i)vulnerable", result.stdout):
@@ -67,7 +67,7 @@ def run_jwt_tool(target: str, urls: list[str], runner: ToolRunner) -> list[dict[
     for url in urls:
         if not re.search(r"(?i)(jwt|token|auth|session)", url):
             continue
-        result = runner.run("jwt-tool", [url])
+        result = runner.run("jwt-tool", [url], targets=[url])
         if result.status in ("not_found", "skipped"):
             return []
         for line in result.stdout.splitlines():
@@ -83,7 +83,7 @@ def run_lfihunt(target: str, urls: list[str], runner: ToolRunner) -> list[dict[s
     for url in urls:
         if not re.search(r"(?i)(file|path|page|include|load|doc|download|cat|dir|view)", url):
             continue
-        result = runner.run("lfihunt", ["-u", url])
+        result = runner.run("lfihunt", ["-u", url], targets=[url])
         if result.status in ("not_found", "skipped"):
             return []
         if re.search(r"(?i)(passwd|root:|boot loader)", result.stdout):
@@ -97,7 +97,7 @@ def run_graphql_cop(target: str, urls: list[str], runner: ToolRunner) -> list[di
     for url in urls:
         if "graphql" not in url.lower():
             continue
-        result = runner.run("graphql-cop", ["-t", url])
+        result = runner.run("graphql-cop", ["-t", url], targets=[url])
         if result.status in ("not_found", "skipped"):
             return []
         for m in re.finditer(r"(?im)^\[.*?\]\s+(.*?)\s*$", result.stdout):
@@ -109,7 +109,7 @@ def run_graphql_cop(target: str, urls: list[str], runner: ToolRunner) -> list[di
 
 def run_waf_probe(target: str, runner: ToolRunner) -> list[dict[str, Any]]:
     """WAF detection (informational)."""
-    result = runner.run("waf-probe", ["-u", f"https://{target}"])
+    result = runner.run("waf-probe", ["-u", f"https://{target}"], targets=[target])
     if result.status in ("not_found", "skipped"):
         return []
     if result.stdout.strip():
@@ -122,7 +122,7 @@ def run_nomore403(target: str, urls: list[str], runner: ToolRunner) -> list[dict
     findings = []
     for r_dict in urls:
         url = r_dict if isinstance(r_dict, str) else str(r_dict.get("url", ""))
-        result = runner.run("nomore403", ["-u", url])
+        result = runner.run("nomore403", ["-u", url], targets=[url])
         if result.status in ("not_found", "skipped"):
             return []
         if re.search(r"(?i)(bypass|200 ok)", result.stdout):
@@ -134,7 +134,7 @@ def run_arjun(target: str, urls: list[str], runner: ToolRunner) -> list[dict[str
     """Hidden-parameter discovery (light scan allowed per spec)."""
     findings = []
     for url in urls[:100]:
-        result = runner.run("arjun", ["-u", url])
+        result = runner.run("arjun", ["-u", url], targets=[url])
         if result.status in ("not_found", "skipped"):
             return []
         for m in re.finditer(r"(?i)parameter\s+[:=]\s+(\w+)", result.stdout):
@@ -144,7 +144,7 @@ def run_arjun(target: str, urls: list[str], runner: ToolRunner) -> list[dict[str
 
 def run_cloudenum(target: str, runner: ToolRunner) -> list[dict[str, Any]]:
     """Cloud asset enumeration (S3/Azure/GCP buckets)."""
-    result = runner.run("cloudenum", ["-k", target])
+    result = runner.run("cloudenum", ["-k", target], targets=[target])
     if result.status in ("not_found", "skipped"):
         return []
     findings = []

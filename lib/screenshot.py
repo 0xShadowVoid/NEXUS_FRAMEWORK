@@ -39,6 +39,7 @@ def capture_screenshot(
     result = runner.run(
         "gowitness",
         ["single", "--url", url, "--screenshot-path", str(out_dir), "--write-db"],
+        targets=[url],
     )
     if getattr(result, "status", "error") != "ok":
         logger.debug("screenshot failed for %s (%s)", url, getattr(result, "status", "?"))

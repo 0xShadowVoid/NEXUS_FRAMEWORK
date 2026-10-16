@@ -13,6 +13,7 @@ from typing import Any
 
 from phases.probe.tool_runner import ToolRunner
 from lib.logger import get_logger
+from lib.scope_validator import filter_targets
 
 logger = get_logger("pegpon_wrapper")
 
@@ -33,11 +34,18 @@ def run_pegpon(
     runner: ToolRunner,
     results_dir: Path,
     with_subdomains: bool = True,
+    target_config: Any | None = None,
 ) -> dict[str, Any]:
     """Run the Pegpon light tool set; returns recon summary dict.
 
     Summary: {'subdomains': [...], 'urls': [...], 'tools_run': [...],
-    'tools_skipped': [...], 'tools_failed': [...]}.
+    'tools_skipped': [...], 'tools_failed': [...].
+
+    Scope handoff boundary: discovered subdomains are scope-filtered before
+    they are written to ``domains.txt`` and handed to httpx/dnsx. The full
+    discovered list is still reported in the summary for audit; only the
+    tool input is restricted to in-scope hosts. When ``target_config`` is
+    absent the legacy behaviour is preserved.
     """
     recon_dir = results_dir / "recon"
     recon_dir.mkdir(parents=True, exist_ok=True)
@@ -64,7 +72,7 @@ def run_pegpon(
     for tool in ("subfinder", "assetfinder", "findomain", "chaos", "github-subdomains"):
         if not with_subdomains:
             break
-        result = runner.run(tool, ["-d", domain])
+        result = runner.run(tool, ["-d", domain], targets=[domain])
         if result.status == "not_found":
             tools_skipped.append(tool)
             continue
@@ -78,20 +86,30 @@ def run_pegpon(
 
     subdomains.add(domain.lower())
 
+    # --- Scope handoff: restrict the httpx/dnsx input file to in-scope hosts.
+    # The apex domain is always in scope; discovered subdomains only when the
+    # operator authorized them (e.g. in_scope: ["*.example.com"]). The full
+    # discovered set is retained in the summary for audit.
+    tool_domains = sorted(subdomains)
+    if target_config is not None:
+        tool_domains = filter_targets(
+            sorted(subdomains), target_config, context="pegpon:domains"
+        )
+
     # --- URL / endpoint discovery ---
     url_tools = {
-        "waybackurls": [domain],
-        "gau": [domain],
-        "katana": ["-u", f"https://{domain}", "-d", "3"],
-        "httpx": ["-l", str(recon_dir / "domains.txt"), "-silent"],
-        "jsluice": ["urls", f"https://{domain}"],
+        "waybackurls": ([domain], [domain]),
+        "gau": ([domain], [domain]),
+        "katana": (["-u", f"https://{domain}", "-d", "3"], [domain]),
+        "httpx": (["-l", str(recon_dir / "domains.txt"), "-silent"], tool_domains),
+        "jsluice": (["urls", f"https://{domain}"], [domain]),
     }
-    # Write domains first so httpx -l has input.
-    _write_lines(recon_dir / "domains.txt", sorted(subdomains))
-    for tool, args in url_tools.items():
-        if tool == "httpx" and not subdomains:
+    # Write domains first so httpx -l has input (in-scope hosts only).
+    _write_lines(recon_dir / "domains.txt", tool_domains)
+    for tool, (args, targets) in url_tools.items():
+        if tool == "httpx" and not tool_domains:
             continue
-        result = runner.run(tool, args)
+        result = runner.run(tool, args, targets=targets)
         if result.status in ("not_found", "skipped"):
             tools_skipped.append(tool)
             continue
@@ -105,6 +123,7 @@ def run_pegpon(
     result = runner.run(
         "ffuf",
         ["-u", f"https://{domain}/FUZZ", "-w", "wordlists/custom/common.txt", "-mc", "all", "-t", "25"],
+        targets=[domain],
     )
     if result.status in ("not_found", "skipped"):
         tools_skipped.append("ffuf")
@@ -114,7 +133,9 @@ def run_pegpon(
             tools_failed.append("ffuf")
 
     # --- DNS / cert / OSINT (dnsx, crt.sh, securitytrails) ---
-    result = runner.run("dnsx", ["-l", str(recon_dir / "domains.txt"), "-silent"])
+    result = runner.run(
+        "dnsx", ["-l", str(recon_dir / "domains.txt"), "-silent"], targets=tool_domains
+    )
     if result.status in ("not_found", "skipped"):
         tools_skipped.append("dnsx")
     else:
@@ -127,8 +148,8 @@ def run_pegpon(
     for pseudo in ("crt.sh", "securitytrails"):
         tools_skipped.append(pseudo)  # API-based; handled by dorker/OSINT path
 
-    # Persist artifacts.
-    _write_lines(recon_dir / "domains.txt", sorted(subdomains))
+    # Persist artifacts (domains.txt stays the scope-filtered tool input).
+    _write_lines(recon_dir / "domains.txt", tool_domains)
     _write_lines(recon_dir / "urls_wayback.txt", sorted(urls))
     endpoints = [{"url": u} for u in sorted(urls)]
     (recon_dir / "endpoints.json").write_text(

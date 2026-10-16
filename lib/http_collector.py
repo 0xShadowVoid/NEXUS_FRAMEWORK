@@ -27,7 +27,7 @@ from lib.logger import get_logger
 from lib.ops_guard import spend_requests
 from lib.payload_guard import validate_payload
 from lib.rate_limiter import RateLimiter
-from lib.scope_validator import validate_finding_scope
+from lib.scope_validator import extract_host, validate_finding_scope
 from lib.ssrf_guard import is_safe_url
 
 logger = get_logger("http_collector")
@@ -151,10 +151,21 @@ class HttpCollector:
             if not location:
                 return resp, ""
             current = urljoin(current, location)
+            # Redirect destinations are attacker-influenced: re-check scope AND
+            # SSRF on every hop so a redirect can never leave authorized scope.
+            if not validate_finding_scope(current, self.target_config):
+                self.stats["scope_blocked"] += 1
+                logger.warning(
+                    "scope blocked redirect hop -> %s", extract_host(current) or "<invalid>"
+                )
+                return None, "scope blocked on redirect"
             safe, reason = is_safe_url(current, allow=self.ssrf_allow)
             if not safe:
                 self.stats["ssrf_blocked"] += 1
-                logger.warning("ssrf guard blocked redirect hop %s: %s", current, reason)
+                logger.warning(
+                    "ssrf guard blocked redirect hop -> %s: %s",
+                    extract_host(current) or "<invalid>", reason,
+                )
                 return None, f"ssrf blocked on redirect: {reason}"
         logger.warning("redirect hop limit exceeded for %s", url)
         return None, "too many redirects"

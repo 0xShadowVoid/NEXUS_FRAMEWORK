@@ -133,7 +133,7 @@ def test_parallel_light_no_tools_returns_empty():
         def tool_available(self, tool):
             return False
 
-        def run(self, tool, args, stdin_data=None, env=None):
+        def run(self, tool, args, stdin_data=None, env=None, targets=None):
             return ToolResult(tool=tool, cmd=[tool], returncode=None, status="not_found")
 
     findings = run_all_light_parallel("x.com", ["https://x.com/"], _R(), max_workers=3)

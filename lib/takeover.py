@@ -284,7 +284,10 @@ def run_takeover(
     # detector works purely from CNAME data when the binary is absent).
     if runner is not None and runner.tool_available("subdominator"):
         try:
-            result = runner.run("subdominator", ["-d", target_config.domain])
+            result = runner.run(
+                "subdominator", ["-d", target_config.domain],
+                targets=[target_config.domain],
+            )
             if result.ok:
                 for line in (result.stdout or "").splitlines():
                     token = line.strip().split()[0] if line.strip() else ""

@@ -73,7 +73,7 @@ class FakeRunner:
     def tool_available(self, tool: str) -> bool:
         return tool in self.responses
 
-    def run(self, tool: str, args: list[str], stdin_data=None, env=None) -> ToolResult:
+    def run(self, tool: str, args: list[str], stdin_data=None, env=None, targets=None) -> ToolResult:
         self.calls.append((tool, list(args)))
         if tool in self.responses:
             return self.responses[tool]

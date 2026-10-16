@@ -45,8 +45,8 @@ targets:
     intensity: quick-scan          # quick-scan | full-scan | deep
     tools: [nuclei, dalfox]        # empty = profile default
     rate_limit: "50/minute"
-    in_scope: [lab.local, 127.0.0.1]
-    out_of_scope: []
+    in_scope: [lab.local, "*.lab.local", 127.0.0.1]
+    out_of_scope: [admin.lab.local, 10.0.0.0/16]
 ```
 
 | Key | Meaning |
@@ -55,8 +55,28 @@ targets:
 | `tools` | explicit tool list; overrides profile membership |
 | `rate_limit` | per-target rate limit string |
 | `cookie` | session cookie passed to authenticated checks (stored locally, never committed) |
-| `in_scope` | the only hosts/URLs testable for this target |
+| `in_scope` | the only hosts/URLs/IPs testable for this target |
 | `out_of_scope` | hard exclusions — win over `in_scope` |
+
+### Scope semantics (authoritative)
+
+NEXUS enforces scope before any traffic, again before **every handoff to an external tool**
+(nuclei, dalfox, sqlmap, httpx, dnsx, ffuf, katana, gowitness, …), and on every HTTP redirect
+hop. It never broadens authorization implicitly:
+
+- **Exact host only.** `in_scope: [lab.local]` authorizes `lab.local` — **not** `api.lab.local`.
+  Add `*.lab.local` to authorize the apex and every subdomain.
+- **Anchored wildcards.** `*.lab.local` matches `lab.local` and `a.b.lab.local`, but never
+  `lab.local.attacker.test` or `evil-lab.local`.
+- **Ports are ignored** for host matching (authorize ports separately in the network phase).
+- **IP literals** must be authorized explicitly by an exact entry or a CIDR (`10.0.0.0/24`).
+  Unlisted IPs are out of scope. Private/loopback/metadata addresses also need the network
+  phase's explicit grants (`allow_private` + an in-scope grant).
+- **Malformed** entries/URLs fail closed.
+
+Discovered hosts/URLs that are out of scope are dropped from tool input lists (`urls.txt`,
+`domains.txt`) and never reach an external tool; the full discovered set remains in the recon
+summary for audit.
 
 ## `schedules:`
 

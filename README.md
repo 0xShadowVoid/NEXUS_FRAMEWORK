@@ -38,11 +38,12 @@ Before any scan:
 
 - **Authorize.** Only test assets you have explicit written permission to test.
 - **Configure scope.** Each target in `config/nexus.yaml` carries `in_scope` and `out_of_scope`
-  entries. `out_of_scope` always wins. The scan target and the built-in HTTP collector are
-  validated against `in_scope` before traffic is sent.
-- **Verify scope manually.** Recon (for example dorking) can surface third-party hosts; those
-  URLs are passed to the optional external tools you install and are not re-filtered per host by
-  NEXUS. Keep `in_scope` accurate and review recon output before enabling active probing.
+  entries. `out_of_scope` always wins. Scope is enforced before any traffic, again before **every
+  external-tool handoff**, and on every HTTP redirect hop. An exact entry (`example.com`) does
+  **not** imply subdomains — add `*.example.com` to authorize them.
+- **Review what recon found.** Recon (for example dorking) can surface third-party hosts. Those
+  are dropped from external-tool input lists automatically, but the discovered set is still
+  recorded for audit — review it before enabling active probing.
 
 Findings that fall outside scope are marked `OUT_OF_SCOPE` and excluded from submission drafts,
 alerts, and chains — but they are still written to the raw output so you can audit what was seen.
@@ -201,8 +202,13 @@ and can never move a finding to `validated`. See [docs/AI_AND_NEMESIS.md](docs/A
 
 Controls implemented in code (see [docs/SECURITY.md](docs/SECURITY.md) for the verified matrix):
 
-- **Scope gate** — `lib/scope_validator.py` validates the scan target and the built-in HTTP
-  collector against `in_scope`; `out_of_scope` entries always win.
+- **Scope gate** — `lib/scope_validator.py` validates the scan target, the built-in HTTP collector,
+  and **every target handed to an external tool** against `in_scope`; `out_of_scope` entries
+  always win, wildcards are anchored (no deceptive-suffix bypass), and malformed input fails
+  closed.
+- **Tool-handoff guard** — `phases/probe/tool_runner.py` re-validates each target immediately
+  before spawning an external tool and fails closed (skips the tool) if any target is out of
+  scope; URL/host lists for nuclei, dalfox, httpx, dnsx, and friends are scope-filtered first.
 - **SSRF guard** — `lib/ssrf_guard.py` blocks metadata endpoints, private/loopback/link-local
   addresses, and DNS-rebinding, and is applied across the internal HTTP paths.
 - **Payload guard** — `lib/payload_guard.py` rejects destructive SQL, reverse shells, webshells,
@@ -217,8 +223,11 @@ Controls implemented in code (see [docs/SECURITY.md](docs/SECURITY.md) for the v
 
 Honest limitations:
 
-- NEXUS validates the **target** and its own HTTP requests; recon-discovered URLs handed to
-  **external tools** are not re-filtered per host. Configure scope carefully.
+- Scope is enforced on NEXUS's own requests and on the targets it hands to external tools; NEXUS
+  cannot police what a third-party binary does **internally** once it receives an authorized
+  target (for example, a tool that follows its own redirects or enumerates third-party services).
+  Prefer tools you trust and keep `in_scope` precise.
+- An exact `in_scope` entry does not authorize subdomains — add `*.example.com` to test them.
 - Detection is heuristic and tool-dependent; findings need human review before submission.
 - Optional integrations (C2 bot, cloud SDKs, browser automation, MCP) are disabled until
   configured and are not required for the core workflow.

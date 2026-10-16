@@ -20,7 +20,7 @@ def test_run_discover_forwards_github_token_from_cfg(tmp_cfg, tmp_path, monkeypa
     monkeypatch.setattr("phases.discover.recon_orchestrator.Dorker", lambda: _FakeDorker())
     monkeypatch.setattr(
         "phases.discover.recon_orchestrator.run_pegpon",
-        lambda domain, runner, results_dir, with_subdomains=True: {
+        lambda domain, runner, results_dir, with_subdomains=True, **kwargs: {
             "subdomains": [domain], "urls": [], "tools_run": [], "tools_skipped": [], "tools_failed": [],
         },
     )
@@ -45,7 +45,7 @@ def test_run_discover_explicit_token_overrides_cfg(tmp_cfg, tmp_path, monkeypatc
     monkeypatch.setattr("phases.discover.recon_orchestrator.Dorker", lambda: _FakeDorker())
     monkeypatch.setattr(
         "phases.discover.recon_orchestrator.run_pegpon",
-        lambda domain, runner, results_dir, with_subdomains=True: {
+        lambda domain, runner, results_dir, with_subdomains=True, **kwargs: {
             "subdomains": [domain], "urls": [], "tools_run": [], "tools_skipped": [], "tools_failed": [],
         },
     )
