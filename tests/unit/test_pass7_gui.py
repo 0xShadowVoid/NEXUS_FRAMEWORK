@@ -106,13 +106,15 @@ def test_gui_scope_validation_enforcement():
 
     os.environ["NEXUS_GUI_PASS"] = "secure_nexus_2026!"
 
-    # Out of scope domain or blocked test domain should be rejected by server-side scope validator
+    # A target that is not part of the configured scope must be rejected by the
+    # server-side scope validator (which derives its boundary only from the
+    # configured `targets:` scope, never from the request).
 
     response = client.post(
 
         "/api/scan",
 
-        json={"target": "malicious-out-of-scope.test", "intensity": "quick-scan", "confirm": True},
+        json={"target": "not-a-configured-target.example", "intensity": "quick-scan", "confirm": True},
 
         auth=("nexus_operator", "secure_nexus_2026!")
 

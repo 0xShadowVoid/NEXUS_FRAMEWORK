@@ -21,7 +21,7 @@ enforces technical scope, not legal permission.
 | Detection + PoC only | no data extraction, no modification, no persistence, no backdoors, no shells |
 | Secret hygiene | `core/sanitizer.py` redacts credentials/keys/tokens before evidence or reports are written; `self-scan` detects committed secrets |
 | Finding lifecycle | `core/lifecycle.py` — `candidate → probable → validated/rejected`; deterministic verification gates promotion; AI cannot validate |
-| Local GUI | `core/gui.py` requires `NEXUS_GUI_USER`/`NEXUS_GUI_PASS` on every protected route and fails closed (HTTP 503) when unset; serve it loopback-only with `python -m nexus gui` (default `127.0.0.1:8080`) |
+| Local GUI | `core/gui.py` requires `NEXUS_GUI_USER`/`NEXUS_GUI_PASS` on every protected route and fails closed (HTTP 503) when unset; serve it loopback-only with `python -m nexus gui` (default `127.0.0.1:8080`). Scan targets are authorized only against the configured `targets:` scope (a request can never define its own boundary; missing/empty/malformed scope fails closed) |
 | Cloud phases | identity verified against a mandatory per-provider account allowlist **before any other API call**; read-only checks only; empty allowlist = zero calls |
 | Audit trail | finding transitions, evidence provenance (tool, source, phase), and scan records in SQLite |
 
@@ -42,6 +42,12 @@ wins. NEXUS never broadens authorization implicitly:
   Unlisted IPs fail closed; private/loopback/metadata addresses additionally require the network
   phase's two-key grants.
 - **Malformed input** (spaces, backslashes, `user@` userinfo tricks, bare paths) is rejected.
+
+The web GUI (`core/gui.py`) derives its authorization boundary **only** from the configured
+`targets:` scope — the union of every configured target's `in_scope`, minus its `out_of_scope`.
+The target named in an HTTP request never contributes to that boundary, so a request cannot
+authorize itself, and a missing, empty, or malformed scope fails closed (HTTP 403/503). The
+explicit "confirm" checkbox is a UX guard, not a security control.
 
 Recon (`discover`) can surface third-party hosts (for example via dorking). Those discovered
 URLs/hosts are filtered at every external-tool handoff: out-of-scope entries are dropped from the

@@ -181,7 +181,7 @@ Framework variables (set in the OS environment, never in files):
 
 | Variable | Meaning |
 |---|---|
-| `NEXUS_GUI_USER` / `NEXUS_GUI_PASS` | Local GUI administrator credentials. If unset the GUI **fails closed** (HTTP 503). |
+| `NEXUS_GUI_USER` / `NEXUS_GUI_PASS` | Local GUI administrator credentials. If unset the GUI **fails closed** (HTTP 503). Scan targets submitted through the GUI are authorized against the configured `targets:` scope; a target not covered by any configured `in_scope` is rejected (HTTP 403). |
 | `NEXUS_VERSION` | Read-only override used by some test harnesses; normally derived from `VERSION`. |
 
 ## Startup failures

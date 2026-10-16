@@ -7,9 +7,12 @@ Security properties actually enforced here:
 - HTTP Basic authentication is required on every protected route; credentials
   come from the ``NEXUS_GUI_USER`` / ``NEXUS_GUI_PASS`` environment variables
   and are compared in constant time. If they are unset the app fails closed
-  (HTTP 503).
-- Server-side scope enforcement (``validate_target_scope``) runs before a scan
-  is launched, and an explicit confirmation flag is required.
+  (HTTP 503). Authentication and scope authorization are separate checks.
+- Server-side scope enforcement runs before a scan is launched, and an explicit
+  confirmation flag is required. The authorization boundary is derived **only**
+  from the configured ``targets:`` scope (see :func:`_trusted_scope`); a
+  requested target can never contribute to (and therefore never authorizes)
+  its own scope, and a missing/invalid/unset scope fails closed.
 - Rendered values are HTML-escaped.
 
 Serve it bound to loopback with the ``gui`` command (``python -m nexus gui``),
@@ -28,7 +31,8 @@ from pydantic import BaseModel, Field
 
 from core.coordinator import Coordinator, ScanOptions
 from core.database import Database
-from lib.config import Config, load_config
+from lib.config import Config, TargetConfig, load_config
+from lib.exceptions import ConfigError, ScopeException
 from lib.scope_validator import validate_target_scope
 from core.sanitizer import sanitize_evidence
 from lib.version import framework_version
@@ -70,6 +74,45 @@ def get_current_user(credentials: HTTPBasicCredentials = Depends(security)) -> s
             headers={"WWW-Authenticate": "Basic"},
         )
     return credentials.username
+
+
+def _trusted_scope(cfg: Config) -> TargetConfig:
+    """Build the GUI authorization boundary from configuration alone.
+
+    The boundary is the union of every configured ``targets:`` entry's
+    ``in_scope``/``out_of_scope`` (``out_of_scope`` still wins). The requested
+    target is deliberately *not* consulted, and ``domain`` is left empty so the
+    shared validator's "empty ``in_scope`` falls back to the target's own
+    domain" rule cannot re-introduce self-authorization — an empty configured
+    scope therefore authorizes nothing (fail closed).
+    """
+    in_scope: list[str] = []
+    out_of_scope: list[str] = []
+    for name in (cfg.targets_section or {}):
+        entry = cfg.target(name)
+        in_scope.extend(entry.in_scope)
+        out_of_scope.extend(entry.out_of_scope)
+    return TargetConfig(
+        domain="",
+        in_scope=list(dict.fromkeys(in_scope)),
+        out_of_scope=list(dict.fromkeys(out_of_scope)),
+    )
+
+
+def _sanitize_tree(value: Any) -> Any:
+    """Recursively sanitize the string leaves of a JSON-like structure.
+
+    ``sanitize_evidence`` operates on strings; scan summaries and findings are
+    dicts, so we walk them instead of passing the container straight through.
+    """
+    if isinstance(value, str):
+        return sanitize_evidence(value)
+    if isinstance(value, dict):
+        return {k: _sanitize_tree(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_tree(v) for v in value]
+    return value
+
 
 @app.get("/health", response_class=JSONResponse)
 def health_check() -> dict[str, Any]:
@@ -168,21 +211,29 @@ def api_launch_scan(payload: ScanRequestModel, user: str = Depends(get_current_u
     if not payload.confirm:
         raise HTTPException(status_code=400, detail="Explicit confirmation required to launch assessment.")
 
-    cfg = load_config()
-    target_config = cfg.target(payload.target)
-    target_config.intensity = payload.intensity
-    if payload.cookie:
-        target_config.cookie = payload.cookie
-
-    # Server-side scope enforcement
+    # Authorization boundary comes from configuration only. A missing or
+    # malformed config fails closed (no scan) rather than falling back to a
+    # request-derived scope.
     try:
-        validate_target_scope(payload.target, target_config)
-    except Exception as e:
-        raise HTTPException(status_code=403, detail=f"Scope validation failed: {str(e)}")
+        cfg = load_config()
+        trusted_scope = _trusted_scope(cfg)
+    except ConfigError as exc:
+        raise HTTPException(status_code=503, detail=f"Configuration unavailable: {exc}")
+    except Exception as exc:  # malformed scope structures -> fail closed
+        raise HTTPException(status_code=503, detail=f"Configuration invalid: {exc}")
 
-    # For safe API testing without running real scans in unit tests, if target contains 'out-of-scope' or 'malicious'
-    if "out-of-scope" in payload.target or "malicious" in payload.target:
-        raise HTTPException(status_code=403, detail="Scope validation failed: target is out of scope")
+    if not trusted_scope.in_scope:
+        raise HTTPException(
+            status_code=403,
+            detail="No authorized scope is configured; refusing to scan (fail closed).",
+        )
+
+    # Server-side scope enforcement against the configured scope. The request
+    # target is validated against it and can never define its own boundary.
+    try:
+        validate_target_scope(payload.target, trusted_scope)
+    except ScopeException as exc:
+        raise HTTPException(status_code=403, detail=f"Scope validation failed: {exc}")
 
     coordinator = Coordinator(cfg)
     options = ScanOptions(
@@ -194,7 +245,7 @@ def api_launch_scan(payload: ScanRequestModel, user: str = Depends(get_current_u
 
     try:
         summary = coordinator.run_scan(options)
-        return {"status": "success", "summary": sanitize_evidence(summary)}
+        return {"status": "success", "summary": _sanitize_tree(summary)}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -203,5 +254,4 @@ def get_findings(target_id: Optional[int] = None, user: str = Depends(get_curren
     cfg = load_config()
     db = Database(cfg.database_path)
     findings = db.list_findings(target_id=target_id)
-    sanitized = [sanitize_evidence(f) for f in findings]
-    return {"findings": sanitized}
+    return {"findings": _sanitize_tree(findings)}
