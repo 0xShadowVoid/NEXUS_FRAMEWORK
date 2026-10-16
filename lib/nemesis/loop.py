@@ -50,13 +50,14 @@ class NemesisLoop:
         actions: dict[str, Callable[[dict[str, Any]], Any]] | None = None,
         max_steps: int = DEFAULT_MAX_STEPS,
         killswitch: KillSwitch | None = None,
+        ai: Any = None,
     ):
         from lib.agent import NexusAgent
 
         self.cfg = cfg
         self.db = db
         self.actions = actions or {}
-        self.agent = agent or NexusAgent(cfg=cfg, actions=self.actions)
+        self.agent = agent or NexusAgent(cfg=cfg, ai=ai, actions=self.actions)
         self.max_steps = int(max_steps)
         self.killswitch = killswitch or KillSwitch()
 
@@ -134,10 +135,10 @@ class NemesisLoop:
             if session is not None and not dry_run:
                 save_session(self.db, session)
 
-        session.phase = "report"
         contract = build_from_run(objective, observations, errors)
         contract_ok, contract_issues = contract.check()
         if session is not None:
+            session.phase = "report"
             session.state = "completed" if contract_ok else "partial"
             if not dry_run:
                 save_session(self.db, session)

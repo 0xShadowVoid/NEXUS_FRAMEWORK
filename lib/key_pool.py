@@ -24,6 +24,18 @@ from typing import Iterable
 
 MAX_KEY_SLOTS = 10          # PROVIDER_API_KEY .. PROVIDER_API_KEY_10
 DEFAULT_RATE_LIMIT_COOLDOWN = 60  # seconds to sideline a 429'd key
+MAX_COOLDOWN_SECONDS = 900        # exponential-backoff ceiling
+DEFAULT_QUOTA_COOLDOWN = 3600     # account-level quota → long sideline
+DEFAULT_OUTAGE_COOLDOWN = 30      # transient provider outage
+
+
+def provider_key_env_names(provider: str) -> list[str]:
+    """Env names that may hold keys/base-URL for *provider* (slot 1..10)."""
+    prefix = provider.upper().replace("-", "_")
+    names = [f"{prefix}_API_KEY"]
+    names += [f"{prefix}_API_KEY_{i}" for i in range(2, MAX_KEY_SLOTS + 1)]
+    names.append(f"{prefix}_BASE_URL")
+    return names
 
 
 def mask_key(key: str) -> str:
@@ -41,7 +53,7 @@ class KeyState:
     """Runtime state for a single key."""
 
     key: str
-    status: str = "active"          # active | dead | rate_limited
+    status: str = "active"          # active | dead | rate_limited | quota | outage
     failures: int = 0
     cooldown_until: float = 0.0
 
@@ -49,9 +61,9 @@ class KeyState:
         now = now if now is not None else time.monotonic()
         if self.status == "dead":
             return False
-        if self.status == "rate_limited" and now < self.cooldown_until:
+        if self.status in ("rate_limited", "quota", "outage") and now < self.cooldown_until:
             return False
-        return self.status in ("active", "rate_limited")
+        return self.status in ("active", "rate_limited", "quota", "outage")
 
 
 def discover_keys(env: dict[str, str], provider: str) -> list[str]:
@@ -104,7 +116,11 @@ class KeyPool:
         return sum(1 for s in self.states if s.usable())
 
     def next_key(self) -> str | None:
-        """Return the next usable key, rotating the cursor. None if none."""
+        """Return the next usable key, rotating the cursor. None if none.
+
+        Dead keys and keys still cooling down (rate limit / quota / outage)
+        are skipped, so a known-bad or cooling credential is never reselected.
+        """
         if not self.states:
             return None
         now = time.monotonic()
@@ -113,10 +129,8 @@ class KeyPool:
             idx = (self._cursor + offset) % n
             state = self.states[idx]
             if state.usable(now):
-                self._cursor = (idx + 1) % n
-                return state.key
-            if state.status == "rate_limited" and now >= state.cooldown_until:
-                state.status = "active"
+                if state.status in ("rate_limited", "quota", "outage") and now >= state.cooldown_until:
+                    state.status = "active"
                 self._cursor = (idx + 1) % n
                 return state.key
         return None
@@ -129,18 +143,42 @@ class KeyPool:
             state.cooldown_until = 0.0
 
     def mark_dead(self, key: str) -> None:
-        """Mark a key permanently dead (401/403/invalid)."""
+        """Mark a key permanently dead (401/invalid credentials)."""
         state = self._find(key)
         if state:
             state.status = "dead"
             state.failures += 1
 
-    def mark_rate_limited(self, key: str, cooldown_seconds: int = DEFAULT_RATE_LIMIT_COOLDOWN) -> None:
+    def mark_rate_limited(self, key: str, cooldown_seconds: int | None = None) -> None:
+        """Sideline a 429'd key with exponential backoff (bounded)."""
         state = self._find(key)
         if state:
+            if cooldown_seconds is None:
+                cooldown_seconds = min(
+                    DEFAULT_RATE_LIMIT_COOLDOWN * (2 ** state.failures), MAX_COOLDOWN_SECONDS
+                )
             state.status = "rate_limited"
             state.failures += 1
             state.cooldown_until = time.monotonic() + cooldown_seconds
+
+    def mark_quota(self, key: str, cooldown_seconds: int = DEFAULT_QUOTA_COOLDOWN) -> None:
+        """Sideline a key whose account quota is exhausted (account-level)."""
+        state = self._find(key)
+        if state:
+            state.status = "quota"
+            state.failures += 1
+            state.cooldown_until = time.monotonic() + cooldown_seconds
+
+    def mark_outage(self, key: str, cooldown_seconds: int | None = None) -> None:
+        """Sideline a key during a transient provider outage."""
+        state = self._find(key)
+        if state:
+            if cooldown_seconds is None:
+                cooldown_seconds = DEFAULT_OUTAGE_COOLDOWN * (2 ** min(state.failures, 3))
+            state.status = "outage"
+            state.failures += 1
+            state.cooldown_until = time.monotonic() + cooldown_seconds
+
 
     def reset(self) -> None:
         """Reset all non-dead keys to active (used between runs)."""

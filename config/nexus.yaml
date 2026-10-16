@@ -85,6 +85,9 @@ ai:
   strong_model: ""            # used for chain reasoning / report writing
   max_calls: 0                # per-run AI call budget (0 = unlimited)
   base_url: ""                # optional override (or CUSTOM_BASE_URL / <PROVIDER>_BASE_URL)
+  # reasoning_effort: ""      # off | low | medium | high (openai/openrouter only)
+  # max_retries: 2            # bounded same-provider retries on transient errors
+  # timeout_seconds: 60       # per-request read timeout
 
 cve:
   auto_update: true
@@ -110,6 +113,20 @@ nemesis:
     enabled: false           # real browser automation (Playwright) — off by default
   mcp:
     enabled: false           # external MCP tools — off by default
+  # Per-agent AI settings (optional). When present, `nexus agent --agent <name>`
+  # selects the provider/model/effort chain. Verified providers only; unknown
+  # or unverified providers (e.g. opencode/cline) are rejected at startup.
+  # agents:
+  #   default:
+  #     provider: gemini
+  #     model: gemini-1.5-flash
+  #     reasoning_effort: ""          # off | low | medium | high (provider-dependent)
+  #     timeout_seconds: 60
+  #     max_retries: 2
+  #     max_calls: 20
+  #     fallback:                     # ordered provider/model fallbacks
+  #       - {provider: openai, model: gpt-4o-mini}
+  #       - {provider: openrouter}
 
 results:
   base_dir: results

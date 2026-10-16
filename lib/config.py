@@ -18,8 +18,16 @@ from typing import Any
 import yaml
 from dotenv import load_dotenv
 
+from lib.ai_providers import PROVIDER_SPECS
 from lib.exceptions import ConfigError
+from lib.key_pool import provider_key_env_names
 from lib.paths import CONFIG_DIR, REPO_ROOT
+
+# AI providers with a verified HTTP integration; their numbered key slots
+# (PROVIDER_API_KEY_2 … _10) must be read from the environment too.
+_AI_ENV_PROVIDERS = [
+    name for name, spec in PROVIDER_SPECS.items() if spec.integration == "openai-compatible-http"
+]
 
 _ENV_REF_RE = re.compile(r"\$\{([A-Z0-9_]+)\}")
 
@@ -142,6 +150,11 @@ class Config:
         return self._main.get("nemesis", {})
 
     @property
+    def agents(self) -> dict[str, Any]:
+        """``nemesis.agents`` — per-agent AI settings (empty when unset)."""
+        return self.nemesis.get("agents", {}) or {}
+
+    @property
     def cve(self) -> dict[str, Any]:
         return self._main.get("cve", {})
 
@@ -241,6 +254,8 @@ def load_config(config_dir: Path | None = None) -> Config:
     from lib import provider_aliases as aliases_mod
 
     env_keys = list(KNOWN_ENV_KEYS) + aliases_mod.EXTRA_ENV_KEYS
+    for provider in _AI_ENV_PROVIDERS:
+        env_keys.extend(provider_key_env_names(provider))
     for key in env_keys:
         val = os.environ.get(key, "")
         if val:

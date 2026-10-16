@@ -59,11 +59,12 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 - `update [--all | --tools-only | --tools-update]` — update framework metadata and/or external tools.
 
 ### Agents & integrations
-- `agent OBJECTIVE [--max-steps N] [--dry-run]` — plan-and-act agent over whitelisted actions (`scan`, `discover`, `dork`, `cve-update`, `status`, `report`).
+- `agent OBJECTIVE [--max-steps N] [--dry-run] [--agent NAME]` — plan-and-act agent over whitelisted actions (`scan`, `discover`, `dork`, `cve-update`, `status`, `report`). `--agent NAME` selects per-agent AI settings from `nemesis.agents`.
 - `c2` — start the Discord/Telegram control bot (requires `c2_bot` config + tokens; the `control` phase is off by default).
 - `openapi --file SPEC [--base URL]` — ingest an OpenAPI/Swagger spec into endpoints.
 - `graphql --file RESULT.json` — analyze a GraphQL introspection result.
-- `ai-keys` — show AI key-pool status (masked).
+- `ai-keys` — show AI key-pool status (masked) and configured agents.
+- `ai-providers` — list AI providers, capabilities and verified/supported status.
 - `ai-set-key --provider openai|glm|deepseek|gemini|kimi|openrouter|custom --key KEY` — store an AI key (multi-key failover pool).
 
 ## Exit behavior

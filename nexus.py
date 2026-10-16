@@ -311,10 +311,17 @@ def cmd_scope_sync(args: argparse.Namespace) -> int:
 
 def cmd_agent(args: argparse.Namespace) -> int:
     from lib.agent import ALLOWED_ACTIONS, NexusAgent
-    from lib.ai_analyzer import AIAnalyzer
+    from lib.ai_agents import analyzer_for_config
 
     cfg = load_config()
-    analyzer = AIAnalyzer.from_config(cfg.ai, cfg.env)
+    if getattr(args, "agent", None):
+        analyzer = analyzer_for_config(cfg, args.agent)
+    elif cfg.agents:
+        analyzer = analyzer_for_config(cfg, None)
+    else:
+        from lib.ai_analyzer import AIAnalyzer
+
+        analyzer = AIAnalyzer.from_config(cfg.ai, cfg.env)
     agent = NexusAgent(cfg, ai=analyzer)
 
     def _scan(step):
@@ -515,11 +522,37 @@ def cmd_check_tools(args: argparse.Namespace) -> int:
 
 
 def cmd_ai_keys(args: argparse.Namespace) -> int:
+    from lib.ai_agents import validate_ai_config
     from lib.ai_analyzer import AIAnalyzer
 
     cfg = load_config()
-    analyzer = AIAnalyzer.from_config(cfg.ai, cfg.env)
-    print(json.dumps({"status": analyzer.status_summary(), "keys": analyzer.key_status()}, indent=2, default=str))
+    try:
+        analyzer = AIAnalyzer.from_config(cfg.ai, cfg.env)
+        status = analyzer.status_summary()
+        keys = analyzer.key_status()
+    except Exception as exc:  # diagnostic command must not crash
+        status, keys = {"error": str(exc)}, []
+    try:
+        agents = validate_ai_config(cfg)
+    except Exception as exc:  # surface config errors instead of crashing
+        agents = {"error": str(exc)}
+    print(json.dumps(
+        {"status": status, "keys": keys, "agents": agents},
+        indent=2, default=str,
+    ))
+    return 0
+
+
+def cmd_ai_providers(args: argparse.Namespace) -> int:
+    from lib.ai_providers import PROVIDER_SPECS, REASONING_EFFORTS
+
+    print(json.dumps(
+        {
+            "reasoning_efforts": list(REASONING_EFFORTS),
+            "providers": [spec.to_dict() for spec in PROVIDER_SPECS.values()],
+        },
+        indent=2, default=str,
+    ))
     return 0
 
 
@@ -751,6 +784,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_ag.add_argument("objective")
     p_ag.add_argument("--max-steps", type=int, default=5)
     p_ag.add_argument("--dry-run", action="store_true")
+    p_ag.add_argument("--agent", help="named AI agent from nemesis.agents (default: 'default')")
     p_ag.set_defaults(func=cmd_agent)
 
     p_c2 = sub.add_parser("c2", help="start the Discord/Telegram control bot")
@@ -800,6 +834,9 @@ def build_parser() -> argparse.ArgumentParser:
     # ai
     p_ak = sub.add_parser("ai-keys", help="show AI key pool status (masked)")
     p_ak.set_defaults(func=cmd_ai_keys)
+
+    p_ap = sub.add_parser("ai-providers", help="show AI providers, capabilities and support status")
+    p_ap.set_defaults(func=cmd_ai_providers)
 
     p_ask = sub.add_parser("ai-set-key", help="add an AI API key (multi-key failover)")
     p_ask.add_argument("--provider", required=True, choices=["openai", "glm", "deepseek", "gemini", "kimi", "openrouter", "custom"])

@@ -104,7 +104,38 @@ all via `${...}` references into `.keys.env`. Without values, notifications are 
 | `fallback_providers` | `[glm, deepseek, ...]` | tried in order on failure |
 | `model` / `strong_model` | `""` | empty = provider default; strong model for chains/reports |
 | `max_calls` | `0` | per-run AI call budget (0 = unlimited) |
+| `max_retries` | `2` | bounded same-provider retries on transient errors |
+| `reasoning_effort` | `""` | `off`/`low`/`medium`/`high`; **only `openai` and `openrouter`** support it |
+| `timeout_seconds` | `60` | per-request read timeout |
 | `base_url` | `""` | override, or `<PROVIDER>_BASE_URL` / `CUSTOM_BASE_URL` env |
+
+Multiple keys per provider are read from numbered slots (`GEMINI_API_KEY`,
+`GEMINI_API_KEY_2` … `_10`, or comma-separated) and rotated on failure.
+
+### `nemesis.agents:` (per-agent AI)
+
+Optional. Each entry names an agent and pins its AI provider/model/effort/limits and an ordered
+fallback chain. Invalid entries (unknown provider, unverified integration, unsupported
+`reasoning_effort`) are **rejected at startup**, never silently ignored.
+
+```yaml
+nemesis:
+  agents:
+    default:
+      provider: gemini
+      model: gemini-1.5-flash
+      reasoning_effort: ""          # off | low | medium | high (provider-dependent)
+      timeout_seconds: 60
+      max_retries: 2
+      max_calls: 20
+      fallback:
+        - {provider: openai, model: gpt-4o-mini}
+        - {provider: openrouter}
+```
+
+Select it with `python -m nexus agent "..." --agent default`. When no `nemesis.agents` section is
+present, the legacy `ai:` settings are used unchanged.
+
 
 ## `cve:`
 

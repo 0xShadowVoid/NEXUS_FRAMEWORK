@@ -1,10 +1,16 @@
 """Provider-agnostic AI analysis client with MULTI-KEY FAILOVER.
 
 Supports any OpenAI-compatible chat API: OpenAI / GLM / DeepSeek / Gemini /
-Kimi (Moonshot) / OpenRouter / custom self-hosted endpoints.
-Multiple API keys per provider are supported and rotated automatically:
-an empty, dead (401/403), or rate-limited (429) key is skipped and the next
-key — or next provider — is tried.
+Kimi (Moonshot) / OpenRouter / custom self-hosted endpoints. Multiple API
+keys per provider are supported and rotated automatically: an empty, dead
+(401), rate-limited (429), quota-exhausted, or temporarily failing key is
+skipped in favour of the next key — or the next provider.
+
+Failover is driven by :mod:`lib.ai_errors`: each HTTP status/exception is
+classified and a per-class policy decides whether to retire the key, cool
+it down, skip the provider, or retry with exponential backoff. Permanent
+errors are never retried blindly, and keys are never rotated to evade a
+genuine quota or usage restriction.
 
 Key env layout (per provider, e.g. OPENAI):
     OPENAI_API_KEY=sk-aaa
@@ -13,16 +19,30 @@ Key env layout (per provider, e.g. OPENAI):
 
 All calls go through ``requests`` with timeouts; failures degrade
 gracefully (return None + log) so scans never block on AI availability.
-Prompts never include secrets.
+Prompts never include secrets, and provider responses are treated as
+untrusted input (JSON is parsed defensively, never executed).
 """
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 from urllib.parse import urlsplit
 
 import requests
 
+from lib.ai_errors import (
+    AIErrorClass,
+    classify_exception,
+    classify_status,
+    decision_for,
+)
+from lib.ai_providers import (
+    PROVIDER_SPECS,
+    ProviderUnsupportedError,
+    supports_reasoning_effort,
+    validate_reasoning_effort,
+)
 from lib.key_pool import KeyPoolRegistry, mask_key
 from lib.logger import get_logger
 from lib.ssrf_guard import is_safe_url
@@ -30,28 +50,19 @@ from lib.ssrf_guard import is_safe_url
 logger = get_logger("ai_analyzer")
 
 _TIMEOUT = (5, 60)  # (connect, read)
+BACKOFF_CAP_SECONDS = 8.0
 
 # provider → default chat-completions base URL (OpenAI-compatible path appended)
 _PROVIDER_BASE = {
-    "openai": "https://api.openai.com/v1",
-    "glm": "https://open.bigmodel.cn/api/paas/v4",
-    "deepseek": "https://api.deepseek.com/v1",
-    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
-    "kimi": "https://api.moonshot.cn/v1",
-    "openrouter": "https://openrouter.ai/api/v1",
-    "ollama": "http://localhost:11434/v1",   # local models, OpenAI-compatible
-    "custom": "",  # any OpenAI-compatible endpoint — set ai.base_url or <PROVIDER>_BASE_URL
+    name: spec.base_url
+    for name, spec in PROVIDER_SPECS.items()
+    if spec.integration == "openai-compatible-http"
 }
 
 _PROVIDER_DEFAULT_MODEL = {
-    "openai": "gpt-4o-mini",
-    "glm": "glm-4-flash",
-    "deepseek": "deepseek-chat",
-    "gemini": "gemini-1.5-flash",
-    "kimi": "moonshot-v1-8k",
-    "openrouter": "openrouter/auto",
-    "ollama": "llama3.1",
-    "custom": "",
+    name: spec.default_model
+    for name, spec in PROVIDER_SPECS.items()
+    if spec.integration == "openai-compatible-http"
 }
 
 ALL_PROVIDERS = tuple(_PROVIDER_BASE.keys())
@@ -62,7 +73,7 @@ ALL_PROVIDERS = tuple(_PROVIDER_BASE.keys())
 _SSRF_ALLOW = {urlsplit(u).hostname for u in _PROVIDER_BASE.values() if u} - {None}
 
 # Providers that need no API key (local endpoints).
-_KEYLESS_PROVIDERS = {"ollama"}
+_KEYLESS_PROVIDERS = {name for name, spec in PROVIDER_SPECS.items() if spec.keyless}
 
 _SYSTEM_PROMPT = (
     "You are a security-finding analysis assistant for an authorized bug "
@@ -85,6 +96,12 @@ class AIAnalyzer:
         enabled: bool = True,
         strong_model: str = "",
         max_calls: int = 0,
+        *,
+        reasoning_effort: str = "",
+        timeout: tuple[int, int] | None = None,
+        max_retries: int = 2,
+        backoff_base: float = 0.5,
+        model_map: dict[str, str] | None = None,
     ):
         self.env = env or {}
         self.enabled = enabled
@@ -92,11 +109,37 @@ class AIAnalyzer:
         self.providers = [p for p in (providers or list(ALL_PROVIDERS)) if p in _PROVIDER_BASE]
         self.global_model = model
         self.base_urls = dict(base_urls or {})
+        self.model_map = {
+            str(k): str(v) for k, v in (model_map or {}).items() if str(v or "")
+        }
         self.strong_model = strong_model
         self.max_calls = int(max_calls or 0)
+        self.max_retries = max(0, int(max_retries))
+        self.backoff_base = max(0.0, float(backoff_base))
+        self.timeout = tuple(timeout) if timeout else _TIMEOUT
+        self.reasoning_effort = self._validate_effort(reasoning_effort)
         self._calls = 0
+        self._disabled_providers: set[str] = set()
         self.pools = KeyPoolRegistry(self.env, ALL_PROVIDERS)
-        self.stats: dict[str, int] = {"attempts": 0, "successes": 0, "failovers": 0, "dead_keys": 0}
+        self.stats: dict[str, Any] = {
+            "attempts": 0,
+            "successes": 0,
+            "failovers": 0,
+            "dead_keys": 0,
+            "errors": {c.value: 0 for c in AIErrorClass},
+        }
+
+    def _validate_effort(self, effort: str) -> str:
+        """Validate reasoning effort against every provider in the chain."""
+        value = validate_reasoning_effort(self.providers[0] if self.providers else "openai", effort)
+        if value:
+            unsupported = [p for p in self.providers if not supports_reasoning_effort(p, value)]
+            if unsupported:
+                raise ProviderUnsupportedError(
+                    "reasoning_effort is not supported by provider(s): "
+                    + ", ".join(unsupported)
+                )
+        return value
 
     # -- construction -------------------------------------------------------
 
@@ -109,6 +152,11 @@ class AIAnalyzer:
             provider (primary)
             fallback_providers (list)   # tried after the primary
             model
+            strong_model
+            max_calls
+            max_retries
+            reasoning_effort            # off|low|medium|high (provider-dependent)
+            timeout_seconds
             base_url
         """
         primary = str(ai_cfg.get("provider", "openai") or "openai").lower()
@@ -116,6 +164,8 @@ class AIAnalyzer:
         providers = [primary] + [p for p in fallbacks if p != primary]
         base_url = str(ai_cfg.get("base_url", "") or "")
         base_urls = {primary: base_url} if base_url else {}
+        timeout_seconds = int(ai_cfg.get("timeout_seconds", 0) or 0)
+        timeout = (5, timeout_seconds) if timeout_seconds else None
         return cls(
             env=env,
             providers=providers,
@@ -124,6 +174,9 @@ class AIAnalyzer:
             enabled=bool(ai_cfg.get("enabled", True)),
             strong_model=str(ai_cfg.get("strong_model", "") or ""),
             max_calls=int(ai_cfg.get("max_calls", 0) or 0),
+            reasoning_effort=str(ai_cfg.get("reasoning_effort", "") or ""),
+            timeout=timeout,
+            max_retries=int(ai_cfg.get("max_retries", 2) or 0),
         )
 
     # -- availability -------------------------------------------------------
@@ -143,7 +196,11 @@ class AIAnalyzer:
         )
 
     def model_for(self, provider: str) -> str:
-        return self.global_model or _PROVIDER_DEFAULT_MODEL.get(provider, "")
+        return (
+            self.model_map.get(provider)
+            or self.global_model
+            or _PROVIDER_DEFAULT_MODEL.get(provider, "")
+        )
 
     def base_url_for(self, provider: str) -> str:
         """Resolve base URL: config override → <PROVIDER>_BASE_URL env → built-in."""
@@ -152,13 +209,19 @@ class AIAnalyzer:
             return self.env[env_key]
         return self.base_urls.get(provider) or _PROVIDER_BASE.get(provider, "")
 
-    # -- core call with failover -------------------------------------------
+    # -- one key attempt ----------------------------------------------------
 
-    def _try_key(self, provider: str, key: str, user_prompt: str) -> tuple[bool, dict[str, Any] | None]:
-        """Attempt one request with one key. Returns (retry_with_next_key, parsed)."""
+    def _try_key(
+        self, provider: str, key: str, user_prompt: str
+    ) -> tuple[bool, dict[str, Any] | None, AIErrorClass | None]:
+        """Attempt one request with one key.
+
+        Returns ``(ok, parsed, error_class)``. On success ``error_class`` is
+        None; on failure ``ok`` is False and ``error_class`` classifies why.
+        """
         url = self.base_url_for(provider).rstrip("/") + "/chat/completions"
         headers = {"Authorization": f"Bearer {key}"}
-        body = {
+        body: dict[str, Any] = {
             "model": self.model_for(provider),
             "messages": [
                 {"role": "system", "content": _SYSTEM_PROMPT},
@@ -166,42 +229,113 @@ class AIAnalyzer:
             ],
             "temperature": 0.1,
         }
+        if self.reasoning_effort and supports_reasoning_effort(provider, self.reasoning_effort):
+            body["reasoning_effort"] = self.reasoning_effort
+
         safe, reason = is_safe_url(url, allow=_SSRF_ALLOW, local_ok=True)
         if not safe:
             logger.warning("ssrf guard blocked AI endpoint (%s): %s", provider, reason)
-            return True, None  # treat as transport failure; try next key/provider
+            return False, None, AIErrorClass.PERMISSION
         try:
-            resp = requests.post(url, headers=headers, json=body, timeout=_TIMEOUT)
+            resp = requests.post(url, headers=headers, json=body, timeout=self.timeout)
         except requests.RequestException as exc:
             logger.warning("AI request error (%s, key %s): %s", provider, mask_key(key), exc)
-            return True, None  # transport error → try next key/provider
+            return False, None, classify_exception(exc)
 
         if resp.status_code == 200:
             self.pools.get(provider).mark_ok(key)
             self.stats["successes"] += 1
             try:
                 content = resp.json()["choices"][0]["message"]["content"]
-                return False, self._parse_json(content)
+                return True, self._parse_json(content), None
             except (KeyError, IndexError, json.JSONDecodeError, ValueError) as exc:
                 logger.warning("AI response parse error: %s", exc)
+                return True, None, None
+
+        body_text = ""
+        try:
+            body_text = resp.text or ""
+        except Exception:  # pragma: no cover - defensive
+            body_text = ""
+        error_class = classify_status(resp.status_code, body_text)
+        logger.warning(
+            "AI request failed (%s HTTP %d, class=%s)",
+            provider, resp.status_code, error_class.value,
+        )
+        return False, None, error_class
+
+    # -- per-provider failover loop -----------------------------------------
+
+    def _run_provider(
+        self, provider: str, user_prompt: str
+    ) -> tuple[bool, dict[str, Any] | None]:
+        if provider in _KEYLESS_PROVIDERS:
+            if not self.base_url_for(provider) or not self.model_for(provider):
                 return False, None
+            self._calls += 1
+            self.stats["attempts"] += 1
+            ok, parsed, error_class = self._try_key(provider, "", user_prompt)
+            if not ok and error_class is not None:
+                self.stats["errors"][error_class.value] += 1
+            return ok, parsed
 
-        if resp.status_code in (401, 403):
-            # Dead key: retire it and try the next one.
-            self.pools.get(provider).mark_dead(key)
-            self.stats["dead_keys"] += 1
-            self.stats["failovers"] += 1
-            logger.warning("AI key rejected by %s (HTTP %d) — failing over", provider, resp.status_code)
-            return True, None
+        pool = self.pools.get(provider)
+        if not len(pool):
+            return False, None
+        if not self.base_url_for(provider) or not self.model_for(provider):
+            logger.debug("provider %r missing base_url/model; skipping", provider)
+            return False, None
 
-        if resp.status_code == 429:
-            self.pools.get(provider).mark_rate_limited(key)
-            self.stats["failovers"] += 1
-            logger.warning("AI key rate-limited by %s — failing over", provider)
-            return True, None
+        max_attempts = len(pool) + self.max_retries
+        attempts = 0
+        backoff = self.backoff_base
+        outage_streak = 0
+        while attempts < max_attempts:
+            key = pool.next_key()
+            if key is None:
+                break
+            attempts += 1
+            self._calls += 1
+            self.stats["attempts"] += 1
+            ok, parsed, error_class = self._try_key(provider, key, user_prompt)
+            if ok:
+                return True, parsed
 
-        logger.warning("AI request failed: HTTP %d (%s)", resp.status_code, provider)
-        return True, None  # other errors → try next provider
+            assert error_class is not None
+            self.stats["errors"][error_class.value] += 1
+            decision = decision_for(error_class)
+
+            if decision.retire_key:
+                pool.mark_dead(key)
+                self.stats["dead_keys"] += 1
+                self.stats["failovers"] += 1
+            elif decision.cool_key:
+                if error_class == AIErrorClass.QUOTA_EXHAUSTED:
+                    pool.mark_quota(key)
+                else:
+                    pool.mark_rate_limited(key)
+                self.stats["failovers"] += 1
+
+            if decision.skip_provider:
+                self._disabled_providers.add(provider)
+                self.stats["failovers"] += 1
+                break
+
+            if decision.retry:
+                if error_class == AIErrorClass.OUTAGE:
+                    outage_streak += 1
+                else:
+                    outage_streak = 0
+                if outage_streak > self.max_retries:
+                    self._disabled_providers.add(provider)
+                    break
+                if backoff:
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, BACKOFF_CAP_SECONDS)
+                continue
+
+            continue  # key retired/cooled → try the next key
+        return False, None
 
     def _chat(self, user_prompt: str) -> dict[str, Any] | None:
         """Run a prompt across providers/keys with failover. Returns JSON or None."""
@@ -216,33 +350,11 @@ class AIAnalyzer:
             return None
 
         for provider in self.providers:
-            # Keyless local providers (e.g. Ollama) need no API key.
-            if provider in _KEYLESS_PROVIDERS:
-                if not self.base_url_for(provider) or not self.model_for(provider):
-                    continue
-                self._calls += 1
-                self.stats["attempts"] += 1
-                retry, parsed = self._try_key(provider, "", user_prompt)
-                if not retry:
-                    return parsed
+            if provider in self._disabled_providers:
                 continue
-            pool = self.pools.get(provider)
-            if not len(pool):
-                continue
-            if not self.base_url_for(provider) or not self.model_for(provider):
-                logger.debug("provider %r missing base_url/model; skipping", provider)
-                continue
-            tried = 0
-            while tried < len(pool) + 1:
-                key = pool.next_key()
-                if key is None:
-                    break
-                tried += 1
-                self._calls += 1
-                self.stats["attempts"] += 1
-                retry, parsed = self._try_key(provider, key, user_prompt)
-                if not retry:
-                    return parsed
+            ok, parsed = self._run_provider(provider, user_prompt)
+            if ok:
+                return parsed
         logger.warning("AI analysis unavailable: all providers/keys exhausted")
         return None
 
@@ -381,5 +493,7 @@ class AIAnalyzer:
             "enabled": self.enabled,
             "providers": self.providers,
             "providers_with_keys": self.pools.providers_with_keys(),
+            "reasoning_effort": self.reasoning_effort or "off",
+            "max_retries": self.max_retries,
             "stats": dict(self.stats),
         }

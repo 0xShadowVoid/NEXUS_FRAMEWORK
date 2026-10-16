@@ -195,7 +195,10 @@ python -m nexus agent "triage latest findings for lab.local" --dry-run
 Supported providers and their key variables: `openai` (`OPENAI_API_KEY`), `glm` (`GLM_API_KEY`),
 `deepseek` (`DEEPSEEK_API_KEY`), `gemini` (`GEMINI_API_KEY`), `kimi` (`KIMI_API_KEY`),
 `openrouter` (`OPENROUTER_API_KEY`), `custom` (`CUSTOM_API_KEY` + `CUSTOM_BASE_URL`), and local
-`ollama` (no key). Multiple keys per provider form a failover pool. AI actors are advisory only
+`ollama` (no key). Multiple keys per provider form a failover pool (`_2` … `_10`); failures are
+classified (credentials, rate limit, quota, outage, timeout, unsupported model) and retried or
+skipped accordingly. Per-agent provider/model/reasoning-effort and ordered fallbacks live under
+`nemesis.agents` and are validated at startup. AI actors are advisory only
 and can never move a finding to `validated`. See [docs/AI_AND_NEMESIS.md](docs/AI_AND_NEMESIS.md).
 
 ## Security model and limitations
