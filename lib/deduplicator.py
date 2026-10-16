@@ -24,6 +24,12 @@ def normalize_endpoint(endpoint: str) -> str:
 
     Lowercases host, strips scheme, drops default ports, sorts query
     params, strips fragments and trailing slashes.
+
+    Endpoints that cannot be parsed (malformed IPv6, or a non-numeric /
+    out-of-range port) are quarantined under a lowercased raw-form
+    identity rather than raised; the port is preserved so invalid values
+    are never silently converted into valid targets. This keeps one bad
+    asset from aborting the ANALYZE phase for the rest of the batch.
     """
     raw = (endpoint or "").strip()
     if not raw:
@@ -32,10 +38,16 @@ def normalize_endpoint(endpoint: str) -> str:
         raw = "http://" + raw
     try:
         parts = urlsplit(raw)
+        host = (parts.hostname or "").lower()
+        port = parts.port
     except ValueError:
+        # Malformed URL (e.g. bad IPv6 escaping) or an invalid port
+        # (non-numeric, negative, or outside 0-65535). Keep the finding
+        # under a stable raw-form identity instead of raising: a single
+        # bad endpoint must not abort deduplication of the whole batch.
+        # The port is deliberately NOT dropped, so an invalid value is
+        # never silently coerced into a valid target.
         return raw.lower().rstrip("/")
-    host = (parts.hostname or "").lower()
-    port = parts.port
     if port in (80, 443, None):
         netloc = host
     else:
