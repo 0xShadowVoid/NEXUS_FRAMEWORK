@@ -151,6 +151,10 @@ class Database:
             self.conn.execute("PRAGMA journal_mode=WAL;")
         except sqlite3.DatabaseError:  # pragma: no cover - exotic filesystems
             pass
+        # Bounded wait on cross-connection/process write contention: SQLite
+        # retries with backoff up to 5s instead of failing immediately with
+        # "database is locked".
+        self.conn.execute("PRAGMA busy_timeout=5000;")
         self.conn.executescript(_SCHEMA)
         self.conn.commit()
         # Additive migrations: upgrade an existing nexus.db in place.
@@ -664,22 +668,35 @@ class Database:
         scan_id: int | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> tuple[int, bool]:
-        """Insert an asset if new; returns (id, created?)."""
-        rows = self.query(
-            "SELECT id FROM assets WHERE kind = ? AND normalized = ?", (kind, normalized)
-        )
-        if rows:
-            self.execute(
-                "UPDATE assets SET last_seen = ? WHERE id = ?", (_now(), rows[0]["id"])
-            )
-            return int(rows[0]["id"]), False
+        """Atomically insert an asset if new, else refresh ``last_seen``.
+
+        Returns ``(id, created?)``. The canonical identity is ``(kind,
+        normalized)`` — the ``assets`` table has ``UNIQUE(kind, normalized)``.
+        A single conflict-safe ``INSERT`` closes the previous read-then-write
+        window, so concurrent upserts of the same asset can no longer create
+        duplicate rows or raise ``IntegrityError`` under concurrent scans.
+        Existing ``value``/``source_tool``/``scan_id``/``metadata`` are
+        preserved (first write wins); only ``last_seen`` advances.
+        """
+        now = _now()
         cur = self.execute(
             "INSERT INTO assets (scan_id, kind, value, normalized, source_tool,"
-            " first_seen, last_seen, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (scan_id, kind, value, normalized, source_tool, _now(), _now(),
+            " first_seen, last_seen, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            " ON CONFLICT(kind, normalized) DO NOTHING",
+            (scan_id, kind, value, normalized, source_tool, now, now,
              json.dumps(metadata or {})),
         )
-        return int(cur.lastrowid), True
+        if cur.rowcount == 1:
+            return int(cur.lastrowid), True
+        # Already present (possibly just created by a concurrent upsert).
+        self.execute(
+            "UPDATE assets SET last_seen = ? WHERE kind = ? AND normalized = ?",
+            (now, kind, normalized),
+        )
+        row = self.query(
+            "SELECT id FROM assets WHERE kind = ? AND normalized = ?", (kind, normalized)
+        )
+        return int(row[0]["id"]), False
 
     def get_asset(self, kind: str, normalized: str) -> dict[str, Any] | None:
         rows = self.query(
@@ -706,18 +723,24 @@ class Database:
         source_tool: str = "",
         scan_id: int | None = None,
     ) -> tuple[int, bool]:
+        """Atomically insert a graph edge if new (``UNIQUE(src_id,dst_id,relation)``).
+
+        Same conflict-safe pattern as :meth:`upsert_asset`: concurrent creation
+        of the same relationship yields a single row and no ``IntegrityError``.
+        """
+        cur = self.execute(
+            "INSERT INTO asset_edges (scan_id, src_id, dst_id, relation, source_tool,"
+            " first_seen) VALUES (?, ?, ?, ?, ?, ?)"
+            " ON CONFLICT(src_id, dst_id, relation) DO NOTHING",
+            (scan_id, src_id, dst_id, relation, source_tool, _now()),
+        )
+        if cur.rowcount == 1:
+            return int(cur.lastrowid), True
         rows = self.query(
             "SELECT id FROM asset_edges WHERE src_id = ? AND dst_id = ? AND relation = ?",
             (src_id, dst_id, relation),
         )
-        if rows:
-            return int(rows[0]["id"]), False
-        cur = self.execute(
-            "INSERT INTO asset_edges (scan_id, src_id, dst_id, relation, source_tool,"
-            " first_seen) VALUES (?, ?, ?, ?, ?, ?)",
-            (scan_id, src_id, dst_id, relation, source_tool, _now()),
-        )
-        return int(cur.lastrowid), True
+        return int(rows[0]["id"]), False
 
     def list_edges(self, scan_id: int | None = None) -> list[dict[str, Any]]:
         if scan_id is None:
