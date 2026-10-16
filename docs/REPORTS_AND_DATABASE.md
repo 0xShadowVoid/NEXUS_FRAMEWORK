@@ -5,10 +5,16 @@
 | Path | Contents | Git status |
 |---|---|---|
 | `nexus.db` | SQLite database (scans, findings, evidence, assets, transitions, engagement memory) | ignored |
-| `results/<target>/<scan-id>/` | per-scan artifacts: `report.md`/JSON, `cloud.json`, `network.json`, tool outputs | ignored |
+| `results/<scan>/` | per-scan artifacts (see the breakdown below) | ignored |
 | `exports/` | `export`/`import` bundles (zip/7z) | ignored |
 | `logs/` | runtime logs | ignored |
 | `browser-artifacts/` | NEMESIS browser session artifacts (opt-in) | ignored |
+
+Each scan folder (`results/<domain>-<platform>-<type>-<scope>-<date>-<time>/`) contains:
+`recon/` (domains, URLs, dorking, tech stack), `scans/` (raw tool output and `raw_findings.json`),
+`processed/` (`findings.json`, `chains.json`, `high_value_findings.json`, `metrics.json`),
+`reports/` (rendered Markdown as `*-findings.md`, plus `drafts/`), `cloud/cloud.json`,
+`network/network.json`, and `screenshots/` when enabled.
 
 ## Database schema (v4, additive migrations)
 

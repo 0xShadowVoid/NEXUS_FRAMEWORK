@@ -376,6 +376,42 @@ def cmd_serve(args: argparse.Namespace) -> int:
         _time.sleep(args.interval)
 
 
+def cmd_gui(args: argparse.Namespace) -> int:
+    """Serve the local web GUI (loopback by default; requires GUI credentials)."""
+    import os
+
+    if not os.environ.get("NEXUS_GUI_USER", "").strip() or not os.environ.get(
+        "NEXUS_GUI_PASS", ""
+    ).strip():
+        print(
+            "error: set NEXUS_GUI_USER and NEXUS_GUI_PASS before starting the GUI",
+            file=sys.stderr,
+        )
+        return 2
+
+    loopback = {"127.0.0.1", "localhost", "::1"}
+    if args.host not in loopback and not args.allow_remote:
+        print(
+            f"error: refusing to bind non-loopback host {args.host!r}; "
+            "pass --allow-remote to override (not recommended)",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        import uvicorn
+    except ImportError:
+        print(
+            "error: uvicorn is required to serve the GUI (it ships as a core dependency)",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"NEXUS GUI: http://{args.host}:{args.port} (HTTP Basic auth required)")
+    uvicorn.run("core.gui:app", host=args.host, port=args.port, log_level=args.log_level)
+    return 0
+
+
 def cmd_retention(args: argparse.Namespace) -> int:
     from lib.retention import retention_report
 
@@ -729,6 +765,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_srv.add_argument("--interval", type=int, default=60)
     p_srv.add_argument("--once", action="store_true")
     p_srv.set_defaults(func=cmd_serve)
+
+    p_gui = sub.add_parser("gui", help="serve the local web GUI (loopback, HTTP Basic auth)")
+    p_gui.add_argument("--host", default="127.0.0.1", help="bind host (loopback by default)")
+    p_gui.add_argument("--port", type=int, default=8080)
+    p_gui.add_argument("--allow-remote", action="store_true",
+                       help="allow binding a non-loopback host (not recommended)")
+    p_gui.add_argument("--log-level", default="info")
+    p_gui.set_defaults(func=cmd_gui)
 
     p_ret = sub.add_parser("retention", help="report scan folders older than N days (no deletion)")
     p_ret.add_argument("--days", type=int, default=30)

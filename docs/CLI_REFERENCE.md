@@ -26,7 +26,7 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 | `--resume SCAN_ID` | resume a previous scan |
 | `--cve ID` | include a specific CVE in context |
 
-## Commands (27)
+## Commands (28)
 
 ### Scanning
 - `hunt TARGET` — scan a single target (accepts the shared scan flags above).
@@ -53,6 +53,7 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 - `self-scan [--root PATH] [--include-allowlisted]` — scan the repo for committed secrets.
 - `scope-sync --domain D --file F [--platform hackerone|bugcrowd] [--config PATH] [--dry-run]` — import program scope into `nexus.yaml`.
 - `serve [--interval S] [--once]` — run due schedules (daemon; `--once` for a single pass).
+- `gui [--host H] [--port P] [--allow-remote] [--log-level L]` — serve the local web GUI (loopback by default; requires `NEXUS_GUI_USER`/`NEXUS_GUI_PASS`, otherwise it refuses to start).
 - `retention --days N` — report scan folders older than N days (**report only, deletes nothing**).
 - `monitor [--file programs.json]` — diff current program list against the last snapshot.
 - `update [--all | --tools-only | --tools-update]` — update framework metadata and/or external tools.

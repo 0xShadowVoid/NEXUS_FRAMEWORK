@@ -53,7 +53,7 @@ TELEGRAM_CHAT_ID=
 ---
 
 ## 4. Local GUI & MCP Secure Startup
-- **Local Web GUI (`core/gui.py`):** Binds to loopback (`127.0.0.1`) by default. Requires HTTP Basic authentication where administrator credentials **must** be explicitly provided via environment variables (`NEXUS_GUI_USER` and `NEXUS_GUI_PASS`). If these variables are unset, the GUI fails closed with HTTP 503 Service Unavailable.
+- **Local Web GUI (`core/gui.py`):** Requires HTTP Basic authentication; administrator credentials **must** be provided via environment variables (`NEXUS_GUI_USER` and `NEXUS_GUI_PASS`). If these variables are unset, the GUI fails closed with HTTP 503 Service Unavailable. Start it loopback-only with `python -m nexus gui` (defaults to `127.0.0.1:8080`; it refuses a non-loopback host unless `--allow-remote` is passed).
 - **MCP Transport (`lib/nemesis/mcp_transport.py`):** Enforces authentication, role authorization, engagement scope verification, and audit logging on every invocation.
 
 ---

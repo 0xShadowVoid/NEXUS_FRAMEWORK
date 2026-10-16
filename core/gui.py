@@ -1,18 +1,24 @@
 """NEXUS GUI & Secure Web Interface Module (Pass 7).
 
-Provides a local FastAPI-based web GUI and REST/WebSocket API interfacing
-directly with the NEXUS Coordinator, Database, and Phase Registry.
-Adheres strictly to security mandates:
-- Binds to loopback (127.0.0.1) by default.
-- Requires HTTP Basic Auth / Session token authentication & role-based authorization.
-- Server-side scope enforcement (`validate_target_scope`) on every scan action.
-- Explicit confirmation flag required for scan execution.
-- CSRF protection for state-changing endpoints.
-- XSS-safe rendering and secret redaction (API keys, tokens, cookies).
+A local FastAPI application exposing a small dashboard and JSON API over the
+NEXUS Coordinator, Database, and Phase Registry.
+
+Security properties actually enforced here:
+- HTTP Basic authentication is required on every protected route; credentials
+  come from the ``NEXUS_GUI_USER`` / ``NEXUS_GUI_PASS`` environment variables
+  and are compared in constant time. If they are unset the app fails closed
+  (HTTP 503).
+- Server-side scope enforcement (``validate_target_scope``) runs before a scan
+  is launched, and an explicit confirmation flag is required.
+- Rendered values are HTML-escaped.
+
+Serve it bound to loopback with the ``gui`` command (``python -m nexus gui``),
+which defaults to ``127.0.0.1``.
 """
 from __future__ import annotations
 
 import hmac
+import html
 import secrets
 from typing import Any, Optional
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Response, Form, Security
@@ -91,7 +97,7 @@ def dashboard(user: str = Depends(get_current_user)) -> str:
     <body>
         <h1>NEXUS Security Framework — Control & Intelligence GUI</h1>
         <div class="card">
-            <h3>Authenticated User: <code>""" + user + """</code></h3>
+            <h3>Authenticated User: <code>""" + html.escape(user) + """</code></h3>
             <p>Status: Active | Scope enforcement: Enabled | Binding: Loopback</p>
         </div>
 

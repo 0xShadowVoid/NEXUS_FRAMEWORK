@@ -1,9 +1,9 @@
 """Scope validation — NEXUS security boundary enforcement.
 
-Blocks out-of-scope targets before scanning starts and out-of-scope
-findings before they reach reports or submissions. Wildcard entries
-(``*.api.paypal.com``) are supported; explicit out-of-scope entries
-always override in-scope entries.
+Blocks out-of-scope targets before scanning starts, and flags out-of-scope
+findings (marked ``OUT_OF_SCOPE`` and excluded from submissions, alerts, and
+chains). Wildcard entries (``*.api.paypal.com``) are supported; explicit
+out-of-scope entries always override in-scope entries.
 """
 from __future__ import annotations
 

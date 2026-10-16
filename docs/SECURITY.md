@@ -13,16 +13,25 @@ enforces technical scope, not legal permission.
 
 | Control | Implementation |
 |---|---|
-| Target scope | `lib/scope_validator.py` — every outbound action validates against the active target's `in_scope`; `out_of_scope` entries always win |
+| Target scope | `lib/scope_validator.py` — the scan target and the internal HTTP collector are validated against the active target's `in_scope`; `out_of_scope` entries always win. Set `in_scope` to cover every host you are authorized to test (see the note below). |
 | Private-IP protection | loopback/private/link-local/metadata addresses need an explicit in-scope IP grant (network phase additionally needs `phases.network.allow_private`) |
 | SSRF protection | `lib/ssrf_guard.py` — applied to every outbound HTTP path, including redirect chains and provider/AI endpoints |
 | Payload boundary | `lib/payload_guard.py` — destructive SQL, reverse shells, download-and-execute, and webshell payloads are rejected |
 | Detection + PoC only | no data extraction, no modification, no persistence, no backdoors, no shells |
 | Secret hygiene | `core/sanitizer.py` redacts credentials/keys/tokens before evidence or reports are written; `self-scan` detects committed secrets |
 | Finding lifecycle | `core/lifecycle.py` — `candidate → probable → validated/rejected`; deterministic verification gates promotion; AI cannot validate |
-| Local GUI | `core/gui.py` binds to `127.0.0.1`, requires `NEXUS_GUI_USER`/`NEXUS_GUI_PASS`, fails closed (HTTP 503) when unset |
+| Local GUI | `core/gui.py` requires `NEXUS_GUI_USER`/`NEXUS_GUI_PASS` on every protected route and fails closed (HTTP 503) when unset; serve it loopback-only with `python -m nexus gui` (default `127.0.0.1:8080`) |
 | Cloud phases | identity verified against a mandatory per-provider account allowlist **before any other API call**; read-only checks only; empty allowlist = zero calls |
 | Audit trail | finding transitions, evidence provenance (tool, source, phase), and scan records in SQLite |
+
+> **Scope boundary — read this.** The hard scope gate validates the primary scan target, and the
+> built-in HTTP collector validates the scope of every URL it requests. Recon (`discover`) can
+> surface third-party hosts (for example via dorking), and those URLs are handed to the optional
+> external tools (nuclei, dalfox, sqlmap, …) that you install yourself. NEXUS does not re-filter
+> each of those URLs per host before the external tool runs. Configure `in_scope`/`out_of_scope`
+> correctly, prefer tools you trust, and review the recon output before enabling active probing.
+> Out-of-scope findings are marked `OUT_OF_SCOPE` and excluded from drafts, alerts, and chains,
+> but they are still written to the raw findings/report so you can audit what was seen.
 
 ## Default-off surfaces
 
