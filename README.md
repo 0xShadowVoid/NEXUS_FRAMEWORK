@@ -130,6 +130,9 @@ Common symptoms and fixes: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 |---|---|
 | [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) | Step-by-step first scan walkthrough |
 | [docs/INSTALLATION.md](docs/INSTALLATION.md) | Source, wheel, and clean-venv installs |
+| [docs/NEXUS_FIRST_RUN_CHECKLIST.md](docs/NEXUS_FIRST_RUN_CHECKLIST.md) | Post-install verification checklist |
+| [docs/NEXUS_OPERATIONS_GUIDE.md](docs/NEXUS_OPERATIONS_GUIDE.md) | Deployment, secure GUI startup, backup/recovery |
+| [docs/NEXUS_DEPENDENCY_MATRIX.md](docs/NEXUS_DEPENDENCY_MATRIX.md) | Python dependencies and optional external tools |
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Every config key and environment variable |
 | [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) | All commands and flags |
 | [docs/PHASES.md](docs/PHASES.md) | Phase registry reference |

@@ -7,6 +7,9 @@ Installed automatically via `pip install`:
 - `requests >= 2.31` (HTTP collections & API calls)
 - `croniter >= 2.0` (Schedule recurrence calculations)
 - `py7zr >= 0.21` (Archive management & export/import support)
+- `fastapi >= 0.110` (local web GUI)
+- `uvicorn >= 0.29` (ASGI server for the local GUI)
+- `pydantic >= 2.6` (GUI request/response schemas)
 
 ---
 

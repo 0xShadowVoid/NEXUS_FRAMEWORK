@@ -1,13 +1,13 @@
 # NEXUS First-Run Checklist
 
-Follow this checklist to verify correct installation, configuration, and operation of NEXUS RC1.
+Follow this checklist to verify correct installation, configuration, and operation of NEXUS 2.0.1.
 
 - [ ] **1. Environment Verification**
   - Python 3.11+ installed (`python --version`).
   - Isolated virtual environment created and activated.
 
-- [ ] **2. Wheel Installation**
-  - Install frozen RC1 wheel: `pip install dist/nexus_framework-2.0.0-py3-none-any.whl`
+- [ ] **2. Installation**
+  - Install NEXUS from the checkout: `pip install .`
   - Verify CLI executable: `python -m nexus --help`
 
 - [ ] **3. Environment & Configuration Check**
@@ -23,4 +23,4 @@ Follow this checklist to verify correct installation, configuration, and operati
     ```powershell
     python -m pytest tests -q -p no:cacheprovider
     ```
-    *(Expected outcome: 481 passed, 11 skipped, 0 failed).*
+    *(Expected outcome: 483 passed, 11 skipped, 0 failed).*
