@@ -36,6 +36,36 @@ def test_xss_encoded_reflection_disproved():
     assert result.verified is False
 
 
+def test_xss_percent_encoded_reflection_disproved():
+    f = _f("reflected_xss", payload="<img src=x onerror=alert(1)>",
+           response="%3Cimg src=x onerror=alert(1)%3E")
+    result = verify_finding(f)
+    assert result.disproved is True
+    assert result.verified is False
+
+
+def test_xss_raw_reflection_with_unrelated_entities_verified():
+    # Regression: a page that merely contains entities elsewhere must not
+    # disprove a *raw* (executable) reflection of the payload.
+    f = _f("reflected_xss", payload="<img src=x onerror=alert(1)>",
+           response=(
+               '<div title=&quot;a&quot;> <img src=x onerror=alert(1)> '
+               "</div><a href='/?q=%3C'>x</a>"
+           ))
+    result = verify_finding(f)
+    assert result.verified is True
+    assert result.disproved is False
+    assert result.method == "reflection"
+
+
+def test_xss_fragment_reflection_without_encoding_verified():
+    f = _f("reflected_xss", payload="<img src=x onerror=alert(1)>",
+           response="<span>onerror=alert(1)</span>")
+    result = verify_finding(f)
+    assert result.verified is True
+    assert result.disproved is False
+
+
 def test_sqli_error_signature_verified():
     f = _f("sqli", response="You have an error in your SQL syntax near '1'")
     assert verify_finding(f).verified is True
@@ -72,6 +102,19 @@ def test_run_verify_marks_disproved_invalid():
     assert "disproved" in out[0]["validity_reason"]
     assert out[1]["verified"] is True
     assert summary["disproved"] == 1 and summary["verified"] == 1
+
+
+def test_run_verify_keeps_raw_reflection_valid():
+    # Regression: raw reflection in a body with unrelated entities must not be
+    # flipped to invalid=False by the verify phase.
+    findings = [
+        _f("reflected_xss", payload="<img src=x onerror=alert(1)>",
+           response='<p title=&quot;q&quot;><img src=x onerror=alert(1)></p>'),
+    ]
+    out, summary = run_verify(findings)
+    assert out[0].get("valid") is not False
+    assert out[0]["verified"] is True
+    assert summary["disproved"] == 0
 
 
 def test_live_replay_fallback_used_when_no_evidence():

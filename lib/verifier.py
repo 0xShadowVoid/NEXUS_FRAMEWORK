@@ -26,7 +26,16 @@ logger = get_logger("verifier")
 
 MIN_CORROBORATING_TOOLS = 2
 
-_ENCODED_RE = re.compile(r"&lt;|&gt;|&#x?3[ce];|&quot;|&#39;|%3C|%3E", re.IGNORECASE)
+# Encoding forms a server typically applies to the XSS delimiters ``<``/``>``.
+# Used to tell a *non-executable* reflection (the payload itself rendered
+# encoded) from an executable one — never to scan the whole response body for
+# encoding artifacts, which real pages almost always contain.
+_HTML_ENCODINGS = (
+    ("&lt;", "&gt;"),
+    ("&#60;", "&#62;"),
+    ("&#x3c;", "&#x3e;"),
+    ("%3C", "%3E"),
+)
 _DB_ERROR_RE = re.compile(
     r"(?i)(sql syntax|you have an error in your sql|mysql_|mysqli|pg_query|postgresql.*error"
     r"|ora-\d{4,5}|sqlite3\.|unclosed quotation mark|odbc .*driver|syntax error at or near)"
@@ -63,6 +72,23 @@ def _xss_fragment(payload: str) -> str:
     return max(candidates, key=len) if candidates else ""
 
 
+def _encoded_payload_forms(payload: str) -> list[str]:
+    """Encoded renderings of *payload* used to detect a non-executable reflection.
+
+    Only the payload's own ``<``/``>`` delimiters are encoded (HTML entity,
+    numeric entity and percent form). The result therefore matches only an
+    escape of *this payload*, never an unrelated entity elsewhere in the body.
+    """
+    if not payload:
+        return []
+    forms: set[str] = set()
+    for lt, gt in _HTML_ENCODINGS:
+        encoded = payload.replace("<", lt).replace(">", gt)
+        if encoded != payload:
+            forms.add(encoded)
+    return sorted(forms)
+
+
 def corroborated(finding: dict[str, Any], min_tools: int = MIN_CORROBORATING_TOOLS) -> bool:
     """True when ≥*min_tools* independent tools reported the same finding."""
     return len({str(t).lower() for t in (finding.get("tools_found") or [])}) >= min_tools
@@ -91,19 +117,29 @@ def verify_finding(
     #    fall through to the live replay, then the generic unverified result.
     if "xss" in vt:
         frag = _xss_fragment(payload)
-        if frag:
-            if frag in response:
-                if _ENCODED_RE.search(response):
-                    return VerificationResult(
-                        verified=False, method="reflection", confidence=15,
-                        notes="payload reflected but entity/percent-encoded (not executable)",
-                        disproved=True,
-                    )
+        # A whole-payload match is the strongest evidence (delimiters intact);
+        # the extracted fragment covers partial/truncated evidence.
+        raw_reflected = bool(payload) and payload in response
+        frag_reflected = bool(frag) and frag in response
+        if raw_reflected or frag_reflected:
+            # Disprove ONLY when the payload is reflected in encoded form and
+            # NOT unescaped — i.e. the payload itself was escaped. The mere
+            # presence of unrelated entities in the body must never disprove a
+            # raw reflection (it would silently discard real findings).
+            encoded_only = not raw_reflected and any(
+                form in response for form in _encoded_payload_forms(payload)
+            )
+            if encoded_only:
                 return VerificationResult(
-                    verified=True, method="reflection", confidence=90,
-                    notes="payload reflected unescaped in evidence",
+                    verified=False, method="reflection", confidence=15,
+                    notes="payload reflected but entity/percent-encoded (not executable)",
+                    disproved=True,
                 )
-            # fragment not present in captured evidence → not decisive; try replay
+            return VerificationResult(
+                verified=True, method="reflection", confidence=90,
+                notes="payload reflected unescaped in evidence",
+            )
+        # fragment not present in captured evidence → not decisive; try replay
 
     elif "sqli" in vt or "sql_injection" in vt:
         if _DB_ERROR_RE.search(response):
