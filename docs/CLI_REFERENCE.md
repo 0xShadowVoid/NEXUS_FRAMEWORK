@@ -55,6 +55,7 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 - `hooks install|status|uninstall [--repo PATH]` — enable/inspect/disable the pre-commit secret-scan hook (`core.hooksPath`).
 - `scope-sync --domain D --file F [--platform hackerone|bugcrowd] [--config PATH] [--dry-run]` — import a local program scope JSON into `nexus.yaml`.
 - `scope-sync --program DOMAIN [--dry-run]` / `scope-sync --all [--dry-run]` — auto-pull a configured target's published in/out-of-scope from its platform API (roadmap E1); updates `nexus.yaml` only when the scope changed. Credentials come from env vars named in the target's `sync:` block.
+- `scope-sync --program DOMAIN|--all [--notify]` — opt in to scope-drift alerts (roadmap E3): on a change, send a structured drift event through the configured channels (Discord/Telegram/email). Off unless `scope_sync.notify.enabled` is true or `--notify` is passed; alerts never broaden scope and delivery failures are reported separately from the sync result.
 - `serve [--interval S] [--once]` — run due schedules (daemon; `--once` for a single pass).
 - `gui [--host H] [--port P] [--allow-remote] [--log-level L]` — serve the local web GUI (loopback by default; requires `NEXUS_GUI_USER`/`NEXUS_GUI_PASS`, otherwise it refuses to start).
 - `retention --days N` — report scan folders older than N days (**report only, deletes nothing**).

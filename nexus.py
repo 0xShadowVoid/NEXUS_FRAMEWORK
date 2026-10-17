@@ -402,6 +402,15 @@ def cmd_scope_sync(args: argparse.Namespace) -> int:
         result = sync_targets(domains, config=cfg, config_path=config_path, apply=not args.dry_run)
         if not args.dry_run:
             _audit_scope_sync(cfg, result)
+        from lib.scope_drift import alert_on_result, build_events
+
+        if args.dry_run:
+            # Dry runs only preview drift; nothing is sent or persisted.
+            result["drift_events"] = build_events(result)
+        else:
+            result["notifications"] = alert_on_result(
+                result, cfg=cfg, notify=getattr(args, "notify", False),
+            )
         print(json.dumps(result, indent=2, default=str))
         return 1 if result["skipped"] else 0
 
@@ -423,7 +432,9 @@ def cmd_scope_sync(args: argparse.Namespace) -> int:
 
 
 def _audit_scope_sync(cfg, result: dict) -> None:
-    """Record applied scope auto-syncs (best-effort; never fatal)."""
+    """Record applied scope auto-syncs + structured drift events (best-effort)."""
+    from lib.scope_drift import build_events
+
     try:
         db = Database(cfg.database_path)
     except Exception:  # pragma: no cover - defensive
@@ -435,6 +446,11 @@ def _audit_scope_sync(cfg, result: dict) -> None:
                     "cli", f"scope_sync.{program['domain']}", category="scope",
                     detail=json.dumps(program.get("drift", {})),
                 )
+        for event in build_events(result):
+            db.insert_audit_event(
+                "cli", f"scope_drift.{event['target']}", category="scope_drift",
+                detail=json.dumps(event, sort_keys=True),
+            )
     except Exception:  # pragma: no cover - defensive
         pass
     finally:
@@ -1050,6 +1066,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_scope.add_argument("--platform", default="hackerone", choices=["hackerone", "bugcrowd"])
     p_scope.add_argument("--program", metavar="DOMAIN", help="auto-sync one configured target via its platform API")
     p_scope.add_argument("--all", action="store_true", help="auto-sync every target with a sync: block")
+    p_scope.add_argument("--notify", action="store_true",
+                         help="send scope-drift alerts on change (also settable via scope_sync.notify)")
     p_scope.add_argument("--config")
     p_scope.add_argument("--dry-run", action="store_true")
     p_scope.set_defaults(func=cmd_scope_sync)

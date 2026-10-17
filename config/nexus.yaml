@@ -65,6 +65,17 @@ targets:
   #     username_env: H1_API_USER  # hackerone only
   #     token_env: H1_API_TOKEN    # api-token env var NAME
 
+# Scope-drift alerts (roadmap E3): when a scope auto-sync changes a target's
+# scope, notify through the channels below. Off by default; enable globally
+# here or per run with `nexus scope-sync --all --notify`. An alert never
+# broadens authorized scope on its own — it only reports the observed change.
+scope_sync:
+  notify:
+    enabled: false
+    discord: true       # Discord findings webhook
+    telegram: true      # Telegram bot
+    email: false        # SMTP (see email: below)
+
 schedules:
   paypal_daily:
     target: paypal.com

@@ -79,6 +79,29 @@ targets:
 `.bak`) **only when the scope changed**, and records the drift. Out-of-scope
 entries always win over in-scope.
 
+### `scope_sync.notify:` (scope-drift alerts, roadmap E3)
+
+When an auto-sync changes a target's scope, NEXUS can emit a structured drift
+event and send it through the channels it already implements. Alerts are
+**off by default**; enable them here or per run with `--notify`:
+
+```yaml
+scope_sync:
+  notify:
+    enabled: false       # global default; `scope-sync --all --notify` overrides
+    discord: true        # Discord findings webhook
+    telegram: true       # Telegram bot
+    email: false         # SMTP (see email: below)
+```
+
+Each event carries the target id, source provider, direction
+(`added`/`removed`/`mixed`), the affected in/out-of-scope entries and a
+timestamp. Repeated syncs of an unchanged drift are not re-alerted, and a
+provider error is **never** reported as a removal. Delivery is best-effort:
+failures are surfaced in the sync output's separate `notifications` block and
+never block or alter the sync result. An alert only reports the observed
+change — it never broadens authorized scope.
+
 ### Scope semantics (authoritative)
 
 NEXUS enforces scope before any traffic, again before **every handoff to an external tool**

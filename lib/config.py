@@ -185,6 +185,12 @@ class Config:
     def schedules(self) -> dict[str, Any]:
         return self._main.get("schedules", {})
 
+    def scope_notify(self) -> dict[str, Any]:
+        """``scope_sync.notify`` settings for scope-drift alerts (empty when unset)."""
+        section = self._main.get("scope_sync", {}) or {}
+        notify = section.get("notify", {}) if isinstance(section, dict) else {}
+        return notify if isinstance(notify, dict) else {}
+
     @property
     def database_path(self) -> Path:
         raw = self._main.get("database", {}).get("path", "nexus.db")
