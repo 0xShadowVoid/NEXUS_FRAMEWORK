@@ -540,16 +540,25 @@ class Database:
         published: str = "",
         tech_matched: str = "",
     ) -> tuple[int, bool]:
-        """Returns (id, created?) — dedup guard for the CVE workflow."""
-        rows = self.query("SELECT id FROM cves WHERE cve_id = ?", (cve_id,))
-        if rows:
-            return int(rows[0]["id"]), False
+        """Returns (id, created?) — dedup guard for the CVE workflow.
+
+        Conflict-safe ``INSERT ... ON CONFLICT(cve_id) DO NOTHING`` closes the
+        previous read-then-write window, so concurrent creation of the same CVE
+        can no longer raise ``IntegrityError`` (``cves.cve_id`` is ``UNIQUE``).
+        An existing record is never modified — matching the former behavior,
+        which treated an already-known CVE purely as a dedup hit and returned
+        its id with ``created=False``.
+        """
         cur = self.execute(
             "INSERT INTO cves (cve_id, severity, description, published, tech_matched,"
-            " poc_generated, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)",
+            " poc_generated, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)"
+            " ON CONFLICT(cve_id) DO NOTHING",
             (cve_id, severity, description, published, tech_matched, _now()),
         )
-        return int(cur.lastrowid), True
+        if cur.rowcount == 1:
+            return int(cur.lastrowid), True
+        row = self.query("SELECT id FROM cves WHERE cve_id = ?", (cve_id,))
+        return int(row[0]["id"]), False
 
     def mark_cve_poc_generated(self, cve_row_id: int) -> None:
         self.execute("UPDATE cves SET poc_generated = 1 WHERE id = ?", (cve_row_id,))
