@@ -22,7 +22,7 @@ from urllib.parse import urlsplit
 
 from lib.config import TargetConfig
 from lib.logger import get_logger
-from lib.scope_validator import validate_finding_scope
+from lib.scope_validator import extract_host, validate_finding_scope
 
 logger = get_logger("filtration")
 
@@ -324,22 +324,38 @@ class FiltrationPipeline:
             return False
 
     def link_domain_assets(self, domain: str, tool: str = "") -> int:
-        """Link every discovered subdomain/host to its root domain."""
-        created = 0
+        """Link every discovered subdomain/host to its root domain.
+
+        A child is linked only when it is a **strict label-boundary
+        subdomain** of the root (``<label>.parent``) — the same anchored
+        rule scope matching uses for ``*.parent``. Substring look-alikes
+        (``notexample.com``, ``example.com.attacker.test``,
+        ``evilexample.com``) are never linked, so a similar hostname can
+        never create an incorrect association. Hosts are canonicalized
+        with the scope validator (scheme/port/trailing-dot/case and IPv6
+        brackets handled per project semantics); a value that cannot be
+        parsed is skipped rather than guessed at, and the apex is never
+        linked to itself.
+        """
         root = normalize_asset("domain", domain)
+        parent = extract_host(root)
+        if not root or not parent:
+            return 0
+        created = 0
         try:
-            _root_id, _created = self.db.upsert_asset(
+            self.db.upsert_asset(
                 "domain", domain, root, source_tool=tool or "nexus", scan_id=self.scan_id
             )
         except Exception:
             return 0
+        suffix = "." + parent
         for kind in ("subdomain", "host"):
             for asset in self.db.list_assets(kind=kind):
-                if asset["normalized"] == root:
+                child = extract_host(asset["value"])
+                if not child or not child.endswith(suffix):
                     continue
-                if asset["normalized"].endswith(f".{root}") or root in asset["normalized"]:
-                    if self.link("domain", domain, kind, asset["value"], "has_subdomain", tool=tool):
-                        created += 1
+                if self.link("domain", domain, kind, asset["value"], "has_subdomain", tool=tool):
+                    created += 1
         return created
 
     # -- reporting ----------------------------------------------------------
