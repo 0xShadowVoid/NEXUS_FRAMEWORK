@@ -26,7 +26,7 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 | `--resume SCAN_ID` | resume a previous scan |
 | `--cve ID` | include a specific CVE in context |
 
-## Commands (28)
+## Commands (29)
 
 ### Scanning
 - `hunt TARGET` — scan a single target (accepts the shared scan flags above).
@@ -60,6 +60,7 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 
 ### Agents & integrations
 - `agent OBJECTIVE [--max-steps N] [--dry-run] [--agent NAME]` — plan-and-act agent over whitelisted actions (`scan`, `discover`, `dork`, `cve-update`, `status`, `report`). `--agent NAME` selects per-agent AI settings from `nemesis.agents`.
+- `team [OBJECTIVE] [--target HOST] [--plan FILE] [--workers N]` — run the bounded multi-agent runtime on a task plan (deterministic/offline by default; `--plan` loads a JSON task DAG `[{id,role,action,target,depends_on}]`).
 - `c2` — start the Discord/Telegram control bot (requires `c2_bot` config + tokens; the `control` phase is off by default).
 - `openapi --file SPEC [--base URL]` — ingest an OpenAPI/Swagger spec into endpoints.
 - `graphql --file RESULT.json` — analyze a GraphQL introspection result.

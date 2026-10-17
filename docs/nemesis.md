@@ -16,6 +16,7 @@ as-is — nothing is duplicated.
 | `skills.py` | Security Skills — methodology above tools; disabled by default; scope-gated |
 | `loop.py` | understand → plan → act → observe → verify → report (kill-switch + budget aware) |
 | `team.py` | Recon / Analysis / Validation / Reporting coordination (validation via lifecycle only) |
+| `runtime.py` | Bounded multi-agent runtime: supervisor plans a task DAG, workers execute it with policy, budgets, persistence and resume |
 | `browser.py` | Browser adapter (mock-first; Playwright optional; OFF by default; content untrusted) |
 | `mcp.py` | MCP security gateway (AUTH → AUTHZ → SCOPE → SAFETY → EXEC → AUDIT) |
 | `contract.py` | Completion contract (changed / observed / verified / evidence / uncertainty / next) |
@@ -45,3 +46,23 @@ nemesis:
 - Audit categories: `nemesis`, `mcp` (plus the existing agent audit log).
 
 Schema v4 adds `engagement_memory` and `nemesis_sessions` (additive; auto-applies).
+
+## Bounded multi-agent runtime (`runtime.py`)
+
+A **supervisor** turns an objective into a bounded `TaskPlan` (a DAG of `AgentTask`
+objects with stable ids, explicit `depends_on`, timeouts and retry limits); **workers**
+execute them under `RunLimits` (parallelism, tasks, wall clock, calls, tokens).
+
+- Task lifecycle: `pending → ready → running → completed | failed | timed_out | cancelled | skipped`.
+- Policy before each task: role→action allowlist (config may only **restrict**, never
+  expand), `validate_target_scope` (fail-closed), explicit approval for `destructive`
+  actions, kill switch + request/token budgets.
+- Secrets are scrubbed (`core.sanitizer`) from args, results, logs and the returned report.
+- Results reference evidence by id; findings are advisory (never validated by the runtime).
+- State persists to `nemesis_tasks` (schema v5); `resume` skips completed tasks and
+  re-queues interrupted ones — completed work is never executed twice.
+- Offline/deterministic with `mock=True` (no AI or network call).
+
+Run it via `nexus team [OBJECTIVE] [--target HOST] [--plan FILE] [--workers N]`.
+
+Schema v5 adds `nemesis_tasks` (additive; auto-applies) for runtime state + provenance.

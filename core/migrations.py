@@ -18,7 +18,7 @@ from lib.logger import get_logger
 
 logger = get_logger("migrations")
 
-TARGET = 4
+TARGET = 5
 
 _META = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -211,7 +211,33 @@ CREATE TABLE IF NOT EXISTS nemesis_sessions (
 );
 """
 
-_STEPS: dict[int, str] = {2: _V2, 3: _V3, 4: _V4}
+# v5: bounded multi-agent runtime — per-task state for resume + provenance.
+_V5 = """
+CREATE TABLE IF NOT EXISTS nemesis_tasks (
+  id INTEGER PRIMARY KEY,
+  plan_id TEXT,
+  engagement TEXT,
+  task_id TEXT,
+  role TEXT,
+  action TEXT,
+  target TEXT,
+  status TEXT,
+  attempts INTEGER DEFAULT 0,
+  failure_class TEXT,
+  result TEXT,
+  error TEXT,
+  depends_on TEXT,
+  evidence_refs TEXT,
+  findings_refs TEXT,
+  started_at TEXT,
+  ended_at TEXT,
+  updated_at TEXT,
+  UNIQUE(plan_id, task_id)
+);
+CREATE INDEX IF NOT EXISTS idx_nemesis_tasks_plan ON nemesis_tasks(plan_id);
+"""
+
+_STEPS: dict[int, str] = {2: _V2, 3: _V3, 4: _V4, 5: _V5}
 
 
 def current_version(conn: sqlite3.Connection) -> int:

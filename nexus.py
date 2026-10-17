@@ -355,6 +355,33 @@ def cmd_agent(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_team(args: argparse.Namespace) -> int:
+    """Run the bounded multi-agent runtime on a plan (deterministic/mock by default)."""
+    from lib.nemesis.runtime import MultiAgentRuntime, RunLimits
+
+    cfg = load_config()
+    target = getattr(args, "target", "") or ""
+    tasks = None
+    if getattr(args, "plan", None):
+        tasks = json.loads(Path(args.plan).read_text(encoding="utf-8"))
+    else:
+        objective = getattr(args, "objective", "") or "team run"
+        tasks = [
+            {"id": "recon", "role": "recon", "action": "discover", "target": target},
+            {"id": "analysis", "role": "analysis", "action": "scan", "target": target, "depends_on": ["recon"]},
+            {"id": "validation", "role": "validation", "action": "verify", "target": target, "depends_on": ["analysis"]},
+            {"id": "reporting", "role": "reporting", "action": "report", "target": ""},
+        ]
+    target_config = cfg.target(target) if target else None
+    runtime = MultiAgentRuntime(
+        cfg=cfg, mock=True, target_config=target_config,
+        limits=RunLimits(max_workers=getattr(args, "workers", 2) or 2),
+    )
+    plan = runtime.plan(getattr(args, "objective", "") or "team run", target or "default", tasks)
+    print(json.dumps(runtime.run(plan).to_dict(), indent=2, default=str))
+    return 0
+
+
 def cmd_openapi(args: argparse.Namespace) -> int:
     from lib.openapi import endpoints_from_file, endpoints_to_urls
 
@@ -810,6 +837,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_ag.add_argument("--dry-run", action="store_true")
     p_ag.add_argument("--agent", help="named AI agent from nemesis.agents (default: 'default')")
     p_ag.set_defaults(func=cmd_agent)
+
+    p_team = sub.add_parser("team", help="run the bounded multi-agent runtime on a task plan")
+    p_team.add_argument("objective", nargs="?", default="", help="objective (used with the default plan)")
+    p_team.add_argument("--target", default="", help="engagement target for the default plan + scope checks")
+    p_team.add_argument("--plan", help="path to a JSON task plan [{id,role,action,target,depends_on}]")
+    p_team.add_argument("--workers", type=int, default=2, help="max parallel workers")
+    p_team.set_defaults(func=cmd_team)
 
     p_c2 = sub.add_parser("c2", help="start the Discord/Telegram control bot")
     p_c2.set_defaults(func=cmd_c2)

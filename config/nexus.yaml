@@ -127,6 +127,17 @@ nemesis:
   #     fallback:                     # ordered provider/model fallbacks
   #       - {provider: openai, model: gpt-4o-mini}
   #       - {provider: openrouter}
+  #   runtime:                        # bounded multi-agent runtime (`nexus team`)
+  #     max_workers: 2                # parallel workers
+  #     max_tasks: 25                 # cap on plan size
+  #     timeout_seconds: 0            # whole-run wall clock (0 = unlimited)
+  #     max_calls: 0                  # worker invocations (0 = unlimited)
+  #     max_tokens: 0                 # token budget (0 = unlimited)
+  #     max_retries: 1                # default per-task retries
+  #     destructive_actions: [scan, exploit]   # require explicit approval
+  #     roles:                        # restrict (never expand) a role's actions
+  #       recon: {actions: [discover, dork, scan]}
+  #       analysis: {actions: [scan, verify]}
 
 results:
   base_dir: results
