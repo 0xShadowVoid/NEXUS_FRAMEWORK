@@ -51,7 +51,8 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 - `doctor` — diagnose environment, config, scope, and tools.
 - `check-tools` — installed vs missing external tools.
 - `self-scan [--root PATH] [--include-allowlisted]` — scan the repo for committed secrets.
-- `scope-sync --domain D --file F [--platform hackerone|bugcrowd] [--config PATH] [--dry-run]` — import program scope into `nexus.yaml`.
+- `scope-sync --domain D --file F [--platform hackerone|bugcrowd] [--config PATH] [--dry-run]` — import a local program scope JSON into `nexus.yaml`.
+- `scope-sync --program DOMAIN [--dry-run]` / `scope-sync --all [--dry-run]` — auto-pull a configured target's published in/out-of-scope from its platform API (roadmap E1); updates `nexus.yaml` only when the scope changed. Credentials come from env vars named in the target's `sync:` block.
 - `serve [--interval S] [--once]` — run due schedules (daemon; `--once` for a single pass).
 - `gui [--host H] [--port P] [--allow-remote] [--log-level L]` — serve the local web GUI (loopback by default; requires `NEXUS_GUI_USER`/`NEXUS_GUI_PASS`, otherwise it refuses to start).
 - `retention --days N` — report scan folders older than N days (**report only, deletes nothing**).

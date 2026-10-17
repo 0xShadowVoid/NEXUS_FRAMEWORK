@@ -294,8 +294,28 @@ def cmd_scope_sync(args: argparse.Namespace) -> int:
         load_program_file,
         parse_bugcrowd_program,
         parse_h1_program,
+        sync_targets,
     )
 
+    cfg = load_config()
+    config_path = Path(args.config) if args.config else None
+
+    if getattr(args, "all", False) or getattr(args, "program", None):
+        domains = cfg.sync_target_names() if args.all else [args.program]
+        if args.all and not domains:
+            print(json.dumps({"programs": [], "count": 0, "applied": 0, "changed": 0,
+                              "skipped": 0, "note": "no targets carry a sync block"}, indent=2))
+            return 0
+        result = sync_targets(domains, config=cfg, config_path=config_path, apply=not args.dry_run)
+        if not args.dry_run:
+            _audit_scope_sync(cfg, result)
+        print(json.dumps(result, indent=2, default=str))
+        return 1 if result["skipped"] else 0
+
+    if not args.file or not args.domain:
+        print("scope-sync: provide --file PATH --domain DOMAIN, or --program DOMAIN / --all",
+              file=sys.stderr)
+        return 2
     program = load_program_file(Path(args.file))
     parsed = parse_h1_program(program) if args.platform == "hackerone" else parse_bugcrowd_program(program)
     if args.dry_run:
@@ -303,10 +323,29 @@ def cmd_scope_sync(args: argparse.Namespace) -> int:
         return 0
     result = apply_scope_to_config(
         args.domain, parsed["in_scope"], parsed["out_of_scope"],
-        config_path=Path(args.config) if args.config else None,
+        config_path=config_path,
     )
     print(json.dumps(result, indent=2, default=str))
     return 0
+
+
+def _audit_scope_sync(cfg, result: dict) -> None:
+    """Record applied scope auto-syncs (best-effort; never fatal)."""
+    try:
+        db = Database(cfg.database_path)
+    except Exception:  # pragma: no cover - defensive
+        return
+    try:
+        for program in result.get("programs", []):
+            if program.get("applied"):
+                db.insert_audit_event(
+                    "cli", f"scope_sync.{program['domain']}", category="scope",
+                    detail=json.dumps(program.get("drift", {})),
+                )
+    except Exception:  # pragma: no cover - defensive
+        pass
+    finally:
+        db.close()
 
 
 def cmd_agent(args: argparse.Namespace) -> int:
@@ -894,10 +933,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_ss.add_argument("--include-allowlisted", action="store_true")
     p_ss.set_defaults(func=cmd_self_scan)
 
-    p_scope = sub.add_parser("scope-sync", help="import program scope into nexus.yaml")
-    p_scope.add_argument("--domain", required=True)
-    p_scope.add_argument("--file", required=True)
+    p_scope = sub.add_parser("scope-sync", help="import or auto-sync program scope into nexus.yaml")
+    p_scope.add_argument("--domain", help="target domain (with --file)")
+    p_scope.add_argument("--file", help="local program JSON (H1/Bugcrowd shape)")
     p_scope.add_argument("--platform", default="hackerone", choices=["hackerone", "bugcrowd"])
+    p_scope.add_argument("--program", metavar="DOMAIN", help="auto-sync one configured target via its platform API")
+    p_scope.add_argument("--all", action="store_true", help="auto-sync every target with a sync: block")
     p_scope.add_argument("--config")
     p_scope.add_argument("--dry-run", action="store_true")
     p_scope.set_defaults(func=cmd_scope_sync)

@@ -53,6 +53,17 @@ targets:
     intensity: quick-scan
     tools: [nuclei, dalfox]
     rate_limit: "100/minute"
+  # Scope auto-sync (roadmap E1): give a target a `sync:` block, then run
+  # `nexus scope-sync --program <domain>` or `--all` to pull its published
+  # in/out-of-scope from the platform API into this file (a .bak is kept).
+  # Credentials are referenced by env var NAME only and never stored here.
+  # acme.com:
+  #   intensity: full-scan
+  #   sync:
+  #     platform: hackerone        # hackerone | bugcrowd
+  #     handle: acme               # program handle/slug on the platform
+  #     username_env: H1_API_USER  # hackerone only
+  #     token_env: H1_API_TOKEN    # api-token env var NAME
 
 schedules:
   paypal_daily:

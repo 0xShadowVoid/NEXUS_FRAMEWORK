@@ -57,6 +57,27 @@ targets:
 | `cookie` | session cookie passed to authenticated checks (stored locally, never committed) |
 | `in_scope` | the only hosts/URLs/IPs testable for this target |
 | `out_of_scope` | hard exclusions — win over `in_scope` |
+| `sync` | optional block enabling scope auto-sync (roadmap E1); see below |
+
+### `sync:` (scope auto-sync, roadmap E1)
+
+Give a target a `sync:` block to pull its published in/out-of-scope from the
+platform API with `nexus scope-sync --program <domain>` (or `--all`).
+Credentials are referenced by environment-variable **name** only:
+
+```yaml
+targets:
+  acme.com:
+    sync:
+      platform: hackerone        # hackerone | bugcrowd
+      handle: acme               # program handle/slug on the platform
+      username_env: H1_API_USER  # hackerone only (HTTP basic auth)
+      token_env: H1_API_TOKEN    # name of the env var holding the API token
+```
+
+`scope-sync` writes `in_scope`/`out_of_scope` back into this file (keeping a
+`.bak`) **only when the scope changed**, and records the drift. Out-of-scope
+entries always win over in-scope.
 
 ### Scope semantics (authoritative)
 

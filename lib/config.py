@@ -205,6 +205,10 @@ class Config:
     def target_names(self) -> list[str]:
         return list(self.targets_section.keys())
 
+    def sync_target_names(self) -> list[str]:
+        """Targets that carry a ``sync:`` block (scope auto-sync, roadmap E1)."""
+        return [d for d, raw in self.targets_section.items() if isinstance(raw, dict) and raw.get("sync")]
+
     def target(self, domain: str) -> TargetConfig:
         """Build a TargetConfig for *domain*, applying overrides."""
         raw = self.targets_section.get(domain, {}) or {}

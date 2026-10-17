@@ -116,7 +116,7 @@ with documented limits · **scaffold** = placeholder pending approval.
 | D3 | Packaging (`nexus` console script) | `pyproject.toml` | done |
 | D5 | `nexus doctor` | `lib/doctor.py` | done |
 | D6 | Delta scanning (`--delta`) | `lib/delta.py` | done |
-| E1 | Scope auto-sync | `lib/scope_sync.py` | done |
+| E1 | Scope auto-sync (file import + platform API pull) | `lib/scope_sync.py`, `lib/scope_providers.py` | done |
 | F1 | HTML export | `core/exporter.py` | done |
 | G1/G2/G5 | C2 target/schedule mgmt + audit + drift alerts | `phases/control/`, `core/coordinator.py` | done |
 | H1 | Self secret-scan | `lib/selfscan.py` | done |
