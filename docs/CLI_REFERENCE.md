@@ -26,7 +26,7 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 | `--resume SCAN_ID` | resume a previous scan |
 | `--cve ID` | include a specific CVE in context |
 
-## Commands (30)
+## Commands (32)
 
 ### Scanning
 - `hunt TARGET` — scan a single target (accepts the shared scan flags above).
@@ -51,6 +51,8 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 - `doctor` — diagnose environment, config, scope, and tools.
 - `check-tools` — installed vs missing external tools.
 - `self-scan [--root PATH] [--include-allowlisted]` — scan the repo for committed secrets.
+- `secretscan [--staged | --history | --tree [PATH]] [--root PATH] [--max-commits N] [--allowlist F] [--json]` — scan staged content (default), commit history, or the tree; masked output; exit 2 = fail-closed. See [HOOKS.md](HOOKS.md).
+- `hooks install|status|uninstall [--repo PATH]` — enable/inspect/disable the pre-commit secret-scan hook (`core.hooksPath`).
 - `scope-sync --domain D --file F [--platform hackerone|bugcrowd] [--config PATH] [--dry-run]` — import a local program scope JSON into `nexus.yaml`.
 - `scope-sync --program DOMAIN [--dry-run]` / `scope-sync --all [--dry-run]` — auto-pull a configured target's published in/out-of-scope from its platform API (roadmap E1); updates `nexus.yaml` only when the scope changed. Credentials come from env vars named in the target's `sync:` block.
 - `serve [--interval S] [--once]` — run due schedules (daemon; `--once` for a single pass).

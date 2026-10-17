@@ -121,7 +121,11 @@ python -m nexus --help
 #    Linux:    cp config/.keys.env.example config/.keys.env
 #    Fill in only the integrations you want (AI keys, webhooks).
 
-# 3. Diagnose the environment and tools
+# 3. Enable pre-commit secret scanning (blocks commits with secrets)
+python -m nexus hooks install    # sets core.hooksPath -> scripts/hooks
+python -m nexus secretscan --staged   # scan staged content any time
+
+# 4. Diagnose the environment and tools
 python -m nexus doctor           # config, dependencies, scope, tools
 python -m nexus check-tools      # installed vs. missing external tools
 ```
@@ -273,6 +277,7 @@ Common symptoms and fixes: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 - [docs/AI_AND_NEMESIS.md](docs/AI_AND_NEMESIS.md) — provider setup and no-AI behavior
 - [docs/SECURITY.md](docs/SECURITY.md) — enforcement matrix and safe-use policy
+- [docs/HOOKS.md](docs/HOOKS.md) — secret scanning and the pre-commit hook
 - [SECURITY.md](SECURITY.md) — vulnerability disclosure policy
 
 **Historical records**

@@ -288,6 +288,99 @@ def cmd_self_scan(args: argparse.Namespace) -> int:
     return 1 if findings else 0
 
 
+def cmd_secretscan(args: argparse.Namespace) -> int:
+    """Scan staged content (default), commit history, or the working tree."""
+    from lib.paths import REPO_ROOT
+    from lib.secretscan import SecretScanError, format_findings, scan_history, scan_staged
+    from lib.selfscan import scan_tree
+
+    allowlist = Path(args.allowlist) if getattr(args, "allowlist", None) else None
+    repo = Path(args.root) if getattr(args, "root", None) else None
+    try:
+        if getattr(args, "history", False):
+            report = scan_history(repo, max_commits=int(getattr(args, "max_commits", 0) or 0),
+                                  allowlist_path=allowlist)
+        elif getattr(args, "tree", None) is not None:
+            root = Path(args.tree) if args.tree else (repo or REPO_ROOT)
+            report = {
+                "mode": "tree", "root": str(root),
+                "findings": scan_tree(root, include_allowlisted=getattr(args, "include_allowlisted", False)),
+                "suppressed": [], "scanned": [], "skipped": [],
+                "allowlist": {"path": "", "entries": 0, "invalid": []},
+            }
+        else:
+            report = scan_staged(repo, allowlist_path=allowlist)
+    except SecretScanError as exc:
+        print(f"secretscan: {exc}", file=sys.stderr)
+        print("Scan could not complete (fail-closed): commit/push should be blocked.", file=sys.stderr)
+        return 2
+
+    if getattr(args, "json", False):
+        print(json.dumps(report, indent=2, default=str))
+    else:
+        print(format_findings(report))
+    return 1 if report["findings"] else 0
+
+
+def cmd_hooks(args: argparse.Namespace) -> int:
+    """Install/status/uninstall the NEXUS pre-commit secret-scan hook."""
+    import subprocess
+
+    from lib.paths import REPO_ROOT
+
+    hook_dir = REPO_ROOT / "scripts" / "hooks"
+    hook_src = hook_dir / "pre-commit"
+    action = args.action
+    target = Path(args.repo) if getattr(args, "repo", None) else REPO_ROOT
+
+    def _git(*git_args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", *git_args], cwd=str(target),
+                              capture_output=True, text=True, check=False)
+
+    if _git("rev-parse", "--show-toplevel").returncode != 0:
+        print("hooks: not inside a git repository", file=sys.stderr)
+        return 2
+
+    if action == "status":
+        configured = _git("config", "--local", "--get", "core.hooksPath").stdout.strip()
+        armed = bool(configured) and Path(configured, "pre-commit").is_file()
+        print(json.dumps({
+            "core.hooksPath": configured or None,
+            "hook_source": str(hook_src),
+            "hook_present": hook_src.is_file(),
+            "armed": armed,
+            "hint": "run 'python -m nexus hooks install' to enable pre-commit secret scanning",
+        }, indent=2))
+        return 0
+
+    if action == "uninstall":
+        _git("config", "--local", "--unset", "core.hooksPath")
+        print("hooks: pre-commit secret scanning disabled (core.hooksPath unset)")
+        return 0
+
+    # install
+    if not hook_src.is_file():
+        print(f"hooks: hook source missing: {hook_src}", file=sys.stderr)
+        return 2
+    result = _git("config", "--local", "core.hooksPath", hook_dir.as_posix())
+    if result.returncode != 0:
+        print(f"hooks: could not set core.hooksPath: {result.stderr.strip()}", file=sys.stderr)
+        return 2
+    try:  # ensure the hook stays executable on POSIX checkouts
+        import os as _os
+
+        _os.chmod(hook_src, 0o755)
+    except OSError:
+        pass
+    print(json.dumps({
+        "installed": True,
+        "core.hooksPath": hook_dir.as_posix(),
+        "hook": str(hook_src),
+        "note": "staged content is scanned before every commit; bypass once with: git commit --no-verify",
+    }, indent=2))
+    return 0
+
+
 def cmd_scope_sync(args: argparse.Namespace) -> int:
     from lib.scope_sync import (
         apply_scope_to_config,
@@ -932,6 +1025,24 @@ def build_parser() -> argparse.ArgumentParser:
     p_ss.add_argument("--root")
     p_ss.add_argument("--include-allowlisted", action="store_true")
     p_ss.set_defaults(func=cmd_self_scan)
+
+    p_sec = sub.add_parser("secretscan", help="scan staged content (default), history, or tree for secrets")
+    sec_mode = p_sec.add_mutually_exclusive_group()
+    sec_mode.add_argument("--staged", action="store_true", help="scan the git index (default)")
+    sec_mode.add_argument("--history", action="store_true", help="scan committed history across all refs")
+    sec_mode.add_argument("--tree", nargs="?", const="", default=None, metavar="PATH",
+                          help="scan the working tree (optional path; default: repo root)")
+    p_sec.add_argument("--max-commits", type=int, default=0, help="limit history scan to N commits (0 = all)")
+    p_sec.add_argument("--root", metavar="PATH", help="git repository to scan (default: current directory)")
+    p_sec.add_argument("--allowlist", help="explicit exception file (default: .nexus-secret-allowlist)")
+    p_sec.add_argument("--include-allowlisted", action="store_true", help="tree scan: ignore the fixture policy")
+    p_sec.add_argument("--json", action="store_true")
+    p_sec.set_defaults(func=cmd_secretscan)
+
+    p_hooks = sub.add_parser("hooks", help="install/status/uninstall the pre-commit secret-scan hook")
+    p_hooks.add_argument("action", choices=["install", "status", "uninstall"])
+    p_hooks.add_argument("--repo", metavar="PATH", help="target repository (default: this checkout)")
+    p_hooks.set_defaults(func=cmd_hooks)
 
     p_scope = sub.add_parser("scope-sync", help="import or auto-sync program scope into nexus.yaml")
     p_scope.add_argument("--domain", help="target domain (with --file)")

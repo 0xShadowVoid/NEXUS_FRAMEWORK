@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # full history for the secret-history scan below
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -16,5 +18,9 @@ jobs:
         run: pip install -r requirements.txt
       - name: Run offline test suite (with coverage)
         run: python -m pytest tests -q --cov=lib --cov=core --cov-report=term-missing
-      - name: Self secret-scan (block committed secrets)
+      - name: Self secret-scan (block committed secrets in the tree)
         run: python nexus.py self-scan
+      - name: Secret-scan commit history (proposed changes across all refs)
+        run: python nexus.py secretscan --history
+      - name: Verify the pre-commit hook script is intact
+        run: sh -n scripts/hooks/pre-commit

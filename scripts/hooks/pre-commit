@@ -1,0 +1,61 @@
+#!/bin/sh
+# NEXUS pre-commit hook - block commits that introduce secrets (roadmap H1).
+#
+# Scans the *staged* content (the git index), so partially staged and unstaged
+# changes are handled correctly: an unstaged secret is never mistaken for a
+# scanned one. Fail-closed - if no usable Python interpreter or NEXUS is
+# available, the commit is blocked rather than silently skipped.
+#
+# Install:  python -m nexus hooks install      (sets core.hooksPath)
+# Review:   python -m nexus secretscan --staged
+# Bypass once (after review): git commit --no-verify
+set -u
+
+# The interpreter may be a two-word command (e.g. "py -3"), so unquoted use is
+# intentional; validate it by executing, not just by presence on PATH.
+# shellcheck disable=SC2086
+
+find_python() {
+    if [ -n "${NEXUS_PYTHON:-}" ]; then
+        if $NEXUS_PYTHON -c "import sys" >/dev/null 2>&1; then printf '%s' "$NEXUS_PYTHON"; return 0; fi
+    fi
+    for cand in python3 python py; do
+        command -v "$cand" >/dev/null 2>&1 || continue
+        if [ "$cand" = "py" ]; then
+            if py -3 -c "import sys" >/dev/null 2>&1; then printf '%s' "py -3"; return 0; fi
+        elif "$cand" -c "import sys" >/dev/null 2>&1; then
+            printf '%s' "$cand"; return 0
+        fi
+    done
+    return 1
+}
+
+PY="$(find_python)" || {
+    echo "NEXUS pre-commit: no working Python interpreter found." >&2
+    echo "Install Python 3.11+ (or set NEXUS_PYTHON) and retry." >&2
+    echo "Commit blocked (fail-closed). Review-only bypass: git commit --no-verify" >&2
+    exit 1
+}
+
+# The repository being committed (its index is what we must scan).
+target_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+    echo "NEXUS pre-commit: cannot determine the repository root." >&2
+    echo "Commit blocked (fail-closed)." >&2
+    exit 1
+}
+
+# The NEXUS install that owns this hook (so it works from any repo that
+# installs it via core.hooksPath): <repo>/scripts/hooks/pre-commit -> <repo>.
+hook_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+nexus_home="$(CDPATH= cd -- "$hook_dir/../.." && pwd)"
+
+if ! ( cd "$nexus_home" && $PY -m nexus secretscan --staged --root "$target_root" ); then
+    echo "" >&2
+    echo "NEXUS pre-commit: commit blocked - staged content has possible secrets" >&2
+    echo "(or the scan could not complete). Remove the value and ROTATE it." >&2
+    echo "Reviewed false positive? Add an exception with a reason to" >&2
+    echo ".nexus-secret-allowlist (format: docs/HOOKS.md)." >&2
+    echo "Review-only bypass once: git commit --no-verify" >&2
+    exit 1
+fi
+exit 0

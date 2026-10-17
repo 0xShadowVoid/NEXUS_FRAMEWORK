@@ -30,9 +30,12 @@ ALLOWLIST_PARTS = {"__pycache__", ".git", ".pytest_cache", "node_modules", ".ven
 ALLOWLIST_NAME_HINTS = ("example", "sample", "placeholder", "template")
 ALLOWLIST_DIRS = {"tests", "test", "fixtures"}
 MAX_FILE_BYTES = 2 * 1024 * 1024   # skip very large/binary-ish files
+MAX_LINE_CHARS = 2000              # skip absurdly long (often minified/binary) lines
+BINARY_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".7z", ".db", ".pyc"}
 
 
-def _is_allowlisted(path: Path, root: Path) -> bool:
+def is_allowlisted(path: Path, root: Path) -> bool:
+    """True when *path* is a fixture/example the tree scan skips by policy."""
     rel = path.relative_to(root)
     parts = {p.lower() for p in rel.parts}
     if parts & {p.lower() for p in ALLOWLIST_PARTS}:
@@ -41,6 +44,32 @@ def _is_allowlisted(path: Path, root: Path) -> bool:
         return True
     name = path.name.lower()
     return any(hint in name for hint in ALLOWLIST_NAME_HINTS)
+
+
+# Backwards-compatible alias (older callers/tests used the private name).
+_is_allowlisted = is_allowlisted
+
+
+def scan_text(text: str, *, path: str = "") -> list[dict]:
+    """Scan one text blob and return masked findings.
+
+    Shared by the working-tree scan (``scan_tree``), the staged-index scan and
+    the history scan (``lib.secretscan``). Findings never contain a raw secret:
+    the *detail* is always masked by :func:`_mask`.
+    """
+    findings: list[dict] = []
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        if len(line) > MAX_LINE_CHARS:
+            continue
+        for kind, pattern in SIGNATURES:
+            if pattern.search(line):
+                findings.append({
+                    "file": path,
+                    "line": lineno,
+                    "kind": kind,
+                    "detail": _mask(line.strip()[:120]),
+                })
+    return findings
 
 
 def scan_tree(root: Path, include_allowlisted: bool = False) -> list[dict]:
@@ -53,9 +82,9 @@ def scan_tree(root: Path, include_allowlisted: bool = False) -> list[dict]:
         if path.name == ".keys.env":
             findings.append({"file": str(path), "line": 0, "kind": "keys_file_present",
                              "detail": ".keys.env exists on disk (must stay git-ignored)"})
-        if not include_allowlisted and _is_allowlisted(path, root):
+        if not include_allowlisted and is_allowlisted(path, root):
             continue
-        if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".7z", ".db", ".pyc"}:
+        if path.suffix.lower() in BINARY_SUFFIXES:
             continue
         try:
             if path.stat().st_size > MAX_FILE_BYTES:
@@ -63,17 +92,7 @@ def scan_tree(root: Path, include_allowlisted: bool = False) -> list[dict]:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        for lineno, line in enumerate(text.splitlines(), start=1):
-            if len(line) > 2000:
-                continue
-            for kind, pattern in SIGNATURES:
-                if pattern.search(line):
-                    findings.append({
-                        "file": str(path),
-                        "line": lineno,
-                        "kind": kind,
-                        "detail": _mask(line.strip()[:120]),
-                    })
+        findings.extend(scan_text(text, path=str(path)))
     logger.info("self-scan: %d potential secret(s)", len(findings))
     return findings
 
