@@ -13,3 +13,4 @@ pydantic>=2.6
 # Development / testing
 pytest>=8.0
 pytest-cov>=4.0
+httpx2>=2.0                      # required by starlette/fastapi TestClient (GUI tests)
