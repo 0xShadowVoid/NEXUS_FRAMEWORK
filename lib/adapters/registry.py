@@ -41,11 +41,13 @@ def _ensure_loaded() -> None:
     if _LOADED:
         return
     _LOADED = True
-    # Importing the module triggers its self-registration.
-    try:
-        from lib.adapters import zap  # noqa: F401
-    except Exception as exc:  # a broken adapter must not break the registry
-        logger.warning("adapter 'zap' unavailable: %s", redact_text(str(exc)))
+    # Importing each module triggers its self-registration. A broken adapter
+    # is isolated so it can never break the registry (or the others).
+    for module in ("zap", "burp"):
+        try:
+            __import__(f"lib.adapters.{module}")
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("adapter %r unavailable: %s", module, redact_text(str(exc)))
 
 
 def adapter_names() -> list[str]:

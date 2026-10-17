@@ -3,8 +3,9 @@
 NEXUS can drive external security tools through a small **adapter framework**
 (`lib/adapters/`) without letting those tools bypass the framework's security
 controls. The core knows nothing about any specific product: an adapter only
-*translates* a tool's concepts into NEXUS concepts. The first adapter is
-**OWASP ZAP**; Burp and Caido plug in through the same interface.
+*translates* a tool's concepts into NEXUS concepts. Two adapters ship today —
+**OWASP ZAP** and **Burp Suite Professional**; Caido and others plug in through
+the same interface.
 
 ## Why an adapter layer
 
@@ -36,6 +37,43 @@ integrations:
 Set the API key out-of-band (never in YAML): `ZAP_API_KEY=...` in the
 environment / `config/.keys.env`. Adapters ship **disabled**.
 
+## Enabling Burp
+
+The Burp adapter targets the **Burp Suite Professional** REST API (`v0.1`),
+which is a **Professional-only** feature — Burp Community exposes no REST API.
+Burp must be running with the REST API enabled (default `http://127.0.0.1:1337`);
+the API key is part of the request **path**, so it is treated as a secret and
+never appears in logs or error strings.
+
+```yaml
+integrations:
+  burp:
+    enabled: true
+    base_url: http://127.0.0.1:1337
+    api_key_env: BURP_API_KEY    # env var NAME holding the API key (never inline)
+    timeout_seconds: 30
+    allow_scan: false            # intrusive crawl+audit stays off until enabled
+    ssrf_allow: []               # extra hosts if Burp is remote
+```
+
+### Burp capabilities & limitations
+
+Only capabilities verified against the documented REST API are exposed:
+
+| Capability | Supported | Notes |
+|---|---|---|
+| Connection / health | yes | driven by `GET knowledge_base/issue_definitions` |
+| Capability discovery | yes | declared, no I/O |
+| Active scan (crawl+audit) | yes | `POST scan` → id, `GET scan/{id}` → status |
+| Issue / finding retrieval | yes | issues are read from `issue_events` |
+| Proxy history / site map | **no** | only via a BApp/Montoya extension; not driven here |
+| Stop / cancel a scan | **no** | no documented endpoint — see below |
+
+Because there is **no stop endpoint**, `cancel_job` reports "unsupported" and
+every timeout/cancellation result is flagged `burp_may_still_be_running: true`.
+A timeout is **not** proof that Burp stopped. Reading results from an existing
+scan id (`--scan-id`) performs **no** active requests.
+
 ## CLI
 
 ```bash
@@ -45,6 +83,18 @@ nexus zap --passive https://ex.com/ --domain ex.com
 nexus zap --active  https://ex.com/ --authorize-active --domain ex.com
 nexus zap --passive https://ex.com/ --import-scan 12   # persist findings+evidence
 nexus zap --mock --passive https://ex.com/ --domain ex.com   # offline dry run
+```
+
+Burp uses the same shape (scanning is always an active crawl+audit):
+
+```bash
+nexus burp --health                    # connection + API probe
+nexus burp --capabilities              # declared capabilities
+nexus burp --issue-definitions         # live issue-type discovery
+nexus burp --active https://ex.com/ --authorize-active --domain ex.com
+nexus burp --scan-id 42                # read-only: fetch an existing scan's issues
+nexus burp --active https://ex.com/ --authorize-active --import-scan 12
+nexus burp --mock --active https://ex.com/ --authorize-active --domain ex.com
 ```
 
 - Passive/spider jobs are non-intrusive; **active** scanning requires both
@@ -96,27 +146,28 @@ originating plugin/alert id, and the DB choke point sanitizes them again on
 write. ZAP risk words map to NEXUS severities (`High→P2`, `Medium→P3`,
 `Low/Informational→P4`).
 
-## Adding another adapter (Burp / Caido)
+## Adding another adapter (Caido / other)
 
 Create a module that implements `SecurityToolAdapter` and self-registers:
 
 ```python
 from lib.adapters.registry import register
 
-@register("burp")
-def build_burp(spec): return BurpAdapter(...)
+@register("caido")
+def build_caido(spec): return CaidoAdapter(...)
 ```
 
 That is the only change required — `GuardedAdapter`, the CLI wiring point, and
-`ingest_findings` are product-agnostic. (Burp/Caido adapters are not part of
-this task.)
+`ingest_findings` are product-agnostic.
 
 ## Limitations
 
 - The adapter translates a documented REST API; it does not bundle or install
-  the tool. ZAP must already be running and reachable.
+  the tool. ZAP or Burp must already be running and reachable.
+- Burp support is limited to the **Professional** REST API and to the
+  capabilities listed above; it cannot read proxy history or stop a scan.
 - Active scanning is intrusive: it is opt-in and per-run authorized, and is
   only as safe as the configured scope.
 - `--mock` uses a deterministic in-memory backend for offline validation; it
   performs **no** real scanning.
-- The standard test suite never contacts a live ZAP or external target.
+- The standard test suite never contacts a live ZAP, Burp, or external target.

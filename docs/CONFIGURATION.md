@@ -219,6 +219,12 @@ authorization + budget controls.
 | `zap.timeout_seconds` | `30` | per-request timeout |
 | `zap.allow_active_scan` | `false` | master switch for intrusive active scanning (also needs `--authorize-active`) |
 | `zap.ssrf_allow` | `[]` | extra hosts for the SSRF guard (remote ZAP) |
+| `burp.enabled` | `false` | enable the Burp Suite Professional adapter |
+| `burp.base_url` | `http://127.0.0.1:1337` | running Burp REST API endpoint (Pro only) |
+| `burp.api_key_env` | `BURP_API_KEY` | **name** of the env var holding the API key (never inline) |
+| `burp.timeout_seconds` | `30` | per-request timeout |
+| `burp.allow_scan` | `false` | master switch for intrusive crawl+audit (also needs `--authorize-active`) |
+| `burp.ssrf_allow` | `[]` | extra hosts for the SSRF guard (remote Burp) |
 
 ## Environment variables
 

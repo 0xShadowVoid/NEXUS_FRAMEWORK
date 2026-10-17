@@ -73,6 +73,7 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 - `ai-runtime [--provider NAME]` — probe a local model runtime (Ollama / OpenAI-compatible) for connection and installed models.
 - `ai-set-key --provider openai|glm|deepseek|gemini|kimi|openrouter|custom --key KEY` — store an AI key (multi-key failover pool).
 - `zap [--health] [--capabilities] [--passive URL | --active URL --authorize-active] [--domain D] [--import-scan ID] [--mock]` — drive the OWASP ZAP adapter through the guarded, scope-checked framework (see [ADAPTERS.md](ADAPTERS.md)).
+- `burp [--health] [--capabilities] [--issue-definitions] [--active URL --authorize-active] [--scan-id ID] [--domain D] [--import-scan ID] [--collect] [--timeout S] [--poll S] [--mock]` — drive the Burp Suite Professional adapter (Pro REST API) through the same guarded, scope-checked framework (see [ADAPTERS.md](ADAPTERS.md)).
 
 ## Exit behavior
 

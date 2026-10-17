@@ -601,6 +601,87 @@ def cmd_zap(args: argparse.Namespace) -> int:
             db.close()
 
 
+def cmd_burp(args: argparse.Namespace) -> int:
+    """Drive the Burp adapter through the guarded, scope-checked framework."""
+    from lib.adapters.base import (
+        KIND_ACTIVE, AdapterError, AdapterPolicy, GuardedAdapter, JobSpec,
+        ingest_findings,
+    )
+    from lib.adapters.burp import MockBurpAdapter, existing_scan_handle
+    from lib.adapters.registry import build_adapter
+    from lib.scope_validator import extract_host
+
+    cfg = load_config()
+    spec = cfg.integration("burp")
+    mock = bool(getattr(args, "mock", False))
+    if not mock and not spec.get("enabled", False):
+        print("burp integration is disabled (integrations.burp.enabled: false); use --mock to dry-run",
+              file=sys.stderr)
+        return 1
+
+    target = getattr(args, "active", "") or ""
+    scan_id = getattr(args, "scan_id", None)
+
+    if target and not getattr(args, "authorize_active", False):
+        print("starting a Burp scan requires --authorize-active (explicit authorization)",
+              file=sys.stderr)
+        return 1
+
+    adapter = MockBurpAdapter() if mock else build_adapter("burp", cfg)
+    db = Database(cfg.database_path) if getattr(args, "import_scan", 0) else None
+
+    domain = getattr(args, "domain", "") or (extract_host(target) if target else "")
+    target_config = cfg.target(domain) if domain else None
+    policy = AdapterPolicy(
+        target_config=target_config,
+        ssrf_allow={str(h).strip().lower() for h in (spec.get("ssrf_allow") or []) if str(h).strip()},
+        allow_active=bool(spec.get("allow_scan", False)) or mock,
+        db=db,
+    )
+    guarded = GuardedAdapter(adapter, policy)
+
+    try:
+        if getattr(args, "capabilities", False):
+            print(json.dumps([c.to_dict() for c in guarded.capabilities()], indent=2))
+            return 0
+        if getattr(args, "issue_definitions", False):
+            print(json.dumps(adapter.issue_definitions(), indent=2, default=str))
+            return 0
+        if getattr(args, "health", False) or (not target and not scan_id):
+            print(json.dumps(guarded.health().to_dict(), indent=2))
+            return 0
+
+        if target:
+            handle = guarded.start_job(JobSpec(
+                target=target, kind=KIND_ACTIVE, authorized=True,
+                poll_interval=float(getattr(args, "poll", 1) or 1),
+                timeout=float(getattr(args, "timeout", 0) or 0),
+            ))
+            handle = guarded.wait(handle, timeout=float(getattr(args, "timeout", 0) or 0),
+                                  poll_interval=float(getattr(args, "poll", 1) or 1))
+        else:
+            # Read-only: fetch issues for an existing scan (nothing is started).
+            handle = adapter.job_status(existing_scan_handle(scan_id, target=""))
+
+        report: dict = {"adapter": "burp", "mock": mock, "job": handle.to_dict()}
+        if handle.status in ("completed", "running", "failed") or getattr(args, "collect", False):
+            findings = guarded.collect(handle)
+            report["finding_count"] = len(findings)
+            report["findings"] = [f.to_dict() for f in findings]
+            if getattr(args, "import_scan", None):
+                report["import"] = ingest_findings(
+                    db, int(args.import_scan), findings, target_config, phase="burp")
+        print(json.dumps(report, indent=2, default=str))
+        return 0
+    except AdapterError as exc:
+        print(f"burp error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        guarded.close()
+        if db is not None:
+            db.close()
+
+
 def cmd_openapi(args: argparse.Namespace) -> int:
     from lib.openapi import endpoints_from_file, endpoints_to_urls
 
@@ -1101,6 +1182,26 @@ def build_parser() -> argparse.ArgumentParser:
     p_zap.add_argument("--poll", type=float, default=1.0, help="status poll interval seconds")
     p_zap.add_argument("--mock", action="store_true", help="offline deterministic dry run (no live ZAP)")
     p_zap.set_defaults(func=cmd_zap)
+
+    p_burp = sub.add_parser("burp", help="drive the Burp Suite Professional adapter (health, scan, issues)")
+    p_burp.add_argument("--health", action="store_true", help="connection + authentication check")
+    p_burp.add_argument("--capabilities", action="store_true", help="list declared adapter capabilities")
+    p_burp.add_argument("--issue-definitions", dest="issue_definitions", action="store_true",
+                        help="live capability discovery (Burp scanner issue definitions)")
+    p_burp.add_argument("--active", metavar="URL", default="",
+                        help="start a crawl + audit scan against URL (needs --authorize-active)")
+    p_burp.add_argument("--authorize-active", dest="authorize_active", action="store_true",
+                        help="explicit authorization for the intrusive scan")
+    p_burp.add_argument("--scan-id", dest="scan_id", default=None,
+                        help="read-only: fetch issues for an existing Burp scan id")
+    p_burp.add_argument("--domain", default="", help="engagement scope domain (default: target host)")
+    p_burp.add_argument("--import-scan", dest="import_scan", type=int, default=0,
+                        help="import collected findings into this NEXUS scan id")
+    p_burp.add_argument("--collect", action="store_true", help="collect issues even if the scan is not complete")
+    p_burp.add_argument("--timeout", type=float, default=0.0, help="whole-job timeout seconds (0 = wait)")
+    p_burp.add_argument("--poll", type=float, default=1.0, help="status poll interval seconds")
+    p_burp.add_argument("--mock", action="store_true", help="offline deterministic dry run (no live Burp)")
+    p_burp.set_defaults(func=cmd_burp)
 
     p_c2 = sub.add_parser("c2", help="start the Discord/Telegram control bot")
     p_c2.set_defaults(func=cmd_c2)

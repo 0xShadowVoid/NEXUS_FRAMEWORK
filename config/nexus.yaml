@@ -175,6 +175,13 @@ integrations:
     timeout_seconds: 30
     allow_active_scan: false     # intrusive (ascan) stays off unless true + per-run --authorize-active
     ssrf_allow: []               # extra hosts if ZAP is remote (e.g. [zap.internal])
+  burp:
+    enabled: false               # Burp Suite Professional REST API (Settings > Suite > REST API)
+    base_url: http://127.0.0.1:1337   # a running Burp Pro instance; Community has no REST API
+    api_key_env: BURP_API_KEY    # env var NAME holding the API key (the key is in the request path)
+    timeout_seconds: 30
+    allow_scan: false            # intrusive crawl+audit stays off unless true + per-run --authorize-active
+    ssrf_allow: []               # extra hosts if Burp is remote (e.g. [burp.internal])
 
 database:
   path: nexus.db
