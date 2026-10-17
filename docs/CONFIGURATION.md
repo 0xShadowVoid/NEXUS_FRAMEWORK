@@ -161,6 +161,21 @@ present, the legacy `ai:` settings are used unchanged.
 
 `base_dir: results`, `exports_dir: exports`, `database.path: nexus.db`.
 
+## `integrations:`
+
+Third-party security-tool adapters (see [ADAPTERS.md](ADAPTERS.md)). Every
+integration ships **disabled** and every scan still passes NEXUS scope +
+authorization + budget controls.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `zap.enabled` | `false` | enable the OWASP ZAP adapter |
+| `zap.base_url` | `http://127.0.0.1:8080` | running ZAP JSON API endpoint |
+| `zap.api_key_env` | `ZAP_API_KEY` | **name** of the env var holding the API key (never inline) |
+| `zap.timeout_seconds` | `30` | per-request timeout |
+| `zap.allow_active_scan` | `false` | master switch for intrusive active scanning (also needs `--authorize-active`) |
+| `zap.ssrf_allow` | `[]` | extra hosts for the SSRF guard (remote ZAP) |
+
 ## Environment variables
 
 Secrets and credentials (all optional; set in `config/.keys.env`):

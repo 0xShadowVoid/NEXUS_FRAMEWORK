@@ -23,6 +23,7 @@ binaries** (never bundled; used only when found on `PATH`). The registry of reco
 | Database | `core/database.py` | SQLite; `backup_to` / `restore_from` |
 | GUI | `core/gui.py` | FastAPI, loopback-only, fails closed without credentials |
 | MCP gateway | `lib/nemesis/mcp*.py` | gated Model Context Protocol transport |
+| Tool adapters | `lib/adapters/` | scope-checked third-party tool integrations (ZAP; see [ADAPTERS.md](ADAPTERS.md)) |
 | Doctor / self-scan | `lib/doctor.py`, `lib/self_scan.py` | diagnostics; committed-secret scan |
 
 ## External binaries (optional)

@@ -143,5 +143,16 @@ results:
   base_dir: results
   exports_dir: exports
 
+# Third-party security-tool integrations (adapters). OFF by default; each
+# action still passes NEXUS scope + authorization + budget controls.
+integrations:
+  zap:
+    enabled: false               # opt-in; nothing runs until enabled
+    base_url: http://127.0.0.1:8080   # a running ZAP instance (daemon/API)
+    api_key_env: ZAP_API_KEY     # env var NAME holding the API key (never inline)
+    timeout_seconds: 30
+    allow_active_scan: false     # intrusive (ascan) stays off unless true + per-run --authorize-active
+    ssrf_allow: []               # extra hosts if ZAP is remote (e.g. [zap.internal])
+
 database:
   path: nexus.db

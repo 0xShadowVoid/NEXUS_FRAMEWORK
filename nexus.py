@@ -382,6 +382,77 @@ def cmd_team(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_zap(args: argparse.Namespace) -> int:
+    """Drive the ZAP adapter through the guarded, scope-checked framework."""
+    from lib.adapters.base import (
+        KIND_ACTIVE, KIND_PASSIVE, AdapterError, AdapterPolicy, GuardedAdapter,
+        ingest_findings,
+    )
+    from lib.adapters.registry import build_adapter
+    from lib.adapters.zap import MockZapAdapter
+    from lib.scope_validator import extract_host
+
+    cfg = load_config()
+    spec = cfg.integration("zap")
+    mock = bool(getattr(args, "mock", False))
+    if not mock and not spec.get("enabled", False):
+        print("zap integration is disabled (integrations.zap.enabled: false); use --mock to dry-run",
+              file=sys.stderr)
+        return 1
+
+    target = getattr(args, "passive", "") or getattr(args, "active", "") or ""
+    kind = KIND_ACTIVE if getattr(args, "active", "") else KIND_PASSIVE
+
+    if kind == KIND_ACTIVE and not getattr(args, "authorize_active", False):
+        print("active scanning requires --authorize-active (explicit authorization)", file=sys.stderr)
+        return 1
+
+    adapter = MockZapAdapter() if mock else build_adapter("zap", cfg)
+    db = Database(cfg.database_path) if getattr(args, "import_scan", 0) else None
+
+    domain = getattr(args, "domain", "") or (extract_host(target) if target else "")
+    target_config = cfg.target(domain) if domain else None
+    policy = AdapterPolicy(
+        target_config=target_config,
+        ssrf_allow={str(h).strip().lower() for h in (spec.get("ssrf_allow") or []) if str(h).strip()},
+        allow_active=bool(spec.get("allow_active_scan", False)) or mock,
+        db=db,
+    )
+    guarded = GuardedAdapter(adapter, policy)
+
+    try:
+        if getattr(args, "capabilities", False):
+            print(json.dumps([c.to_dict() for c in guarded.capabilities()], indent=2))
+            return 0
+        if getattr(args, "health", False) or not target:
+            print(json.dumps(guarded.health().to_dict(), indent=2))
+            return 0
+
+        from lib.adapters.base import JobSpec
+
+        handle = guarded.start_job(JobSpec(target=target, kind=kind,
+                                           authorized=getattr(args, "authorize_active", False)))
+        handle = guarded.wait(handle, timeout=float(getattr(args, "timeout", 0) or 0),
+                              poll_interval=float(getattr(args, "poll", 1) or 1))
+        report: dict = {"adapter": "zap", "mock": mock, "job": handle.to_dict()}
+        if handle.status in ("completed", "running") or getattr(args, "collect", False):
+            findings = guarded.collect(handle)
+            report["finding_count"] = len(findings)
+            report["findings"] = [f.to_dict() for f in findings]
+            if getattr(args, "import_scan", None):
+                report["import"] = ingest_findings(
+                    db, int(args.import_scan), findings, target_config, phase="zap")
+        print(json.dumps(report, indent=2, default=str))
+        return 0
+    except AdapterError as exc:
+        print(f"zap error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        guarded.close()
+        if db is not None:
+            db.close()
+
+
 def cmd_openapi(args: argparse.Namespace) -> int:
     from lib.openapi import endpoints_from_file, endpoints_to_urls
 
@@ -844,6 +915,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_team.add_argument("--plan", help="path to a JSON task plan [{id,role,action,target,depends_on}]")
     p_team.add_argument("--workers", type=int, default=2, help="max parallel workers")
     p_team.set_defaults(func=cmd_team)
+
+    p_zap = sub.add_parser("zap", help="drive the OWASP ZAP adapter (health, passive/active scan, alerts)")
+    p_zap.add_argument("--health", action="store_true", help="connection + version check")
+    p_zap.add_argument("--capabilities", action="store_true", help="list adapter capabilities")
+    p_zap.add_argument("--passive", metavar="URL", default="", help="run a passive (spider) job against URL")
+    p_zap.add_argument("--active", metavar="URL", default="", help="run an ACTIVE scan against URL (needs --authorize-active)")
+    p_zap.add_argument("--authorize-active", dest="authorize_active", action="store_true",
+                       help="explicit authorization for intrusive active scanning")
+    p_zap.add_argument("--domain", default="", help="engagement scope domain (default: target host)")
+    p_zap.add_argument("--import-scan", dest="import_scan", type=int, default=0,
+                       help="import collected findings into this scan id")
+    p_zap.add_argument("--collect", action="store_true", help="collect alerts even if the job is not complete")
+    p_zap.add_argument("--timeout", type=float, default=0.0, help="whole-job timeout seconds (0 = wait)")
+    p_zap.add_argument("--poll", type=float, default=1.0, help="status poll interval seconds")
+    p_zap.add_argument("--mock", action="store_true", help="offline deterministic dry run (no live ZAP)")
+    p_zap.set_defaults(func=cmd_zap)
 
     p_c2 = sub.add_parser("c2", help="start the Discord/Telegram control bot")
     p_c2.set_defaults(func=cmd_c2)

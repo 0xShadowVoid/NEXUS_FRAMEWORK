@@ -26,7 +26,7 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 | `--resume SCAN_ID` | resume a previous scan |
 | `--cve ID` | include a specific CVE in context |
 
-## Commands (29)
+## Commands (30)
 
 ### Scanning
 - `hunt TARGET` — scan a single target (accepts the shared scan flags above).
@@ -68,6 +68,7 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 - `ai-providers` — list AI providers, capabilities and verified/supported status.
 - `ai-runtime [--provider NAME]` — probe a local model runtime (Ollama / OpenAI-compatible) for connection and installed models.
 - `ai-set-key --provider openai|glm|deepseek|gemini|kimi|openrouter|custom --key KEY` — store an AI key (multi-key failover pool).
+- `zap [--health] [--capabilities] [--passive URL | --active URL --authorize-active] [--domain D] [--import-scan ID] [--mock]` — drive the OWASP ZAP adapter through the guarded, scope-checked framework (see [ADAPTERS.md](ADAPTERS.md)).
 
 ## Exit behavior
 

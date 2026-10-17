@@ -172,6 +172,16 @@ class Config:
         return self._main.get("c2_bot", {})
 
     @property
+    def integrations(self) -> dict[str, Any]:
+        """Third-party security-tool integrations (adapters) — empty when unset."""
+        return self._main.get("integrations", {}) or {}
+
+    def integration(self, name: str) -> dict[str, Any]:
+        """``integrations.<name>`` settings (empty dict when unset)."""
+        section = self.integrations.get(str(name), {}) or {}
+        return section if isinstance(section, dict) else {}
+
+    @property
     def schedules(self) -> dict[str, Any]:
         return self._main.get("schedules", {})
 
