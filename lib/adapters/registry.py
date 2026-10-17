@@ -43,7 +43,7 @@ def _ensure_loaded() -> None:
     _LOADED = True
     # Importing each module triggers its self-registration. A broken adapter
     # is isolated so it can never break the registry (or the others).
-    for module in ("zap", "burp"):
+    for module in ("zap", "burp", "caido"):
         try:
             __import__(f"lib.adapters.{module}")
         except Exception as exc:  # pragma: no cover - defensive

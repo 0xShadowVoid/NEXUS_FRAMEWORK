@@ -3,8 +3,8 @@
 NEXUS can drive external security tools through a small **adapter framework**
 (`lib/adapters/`) without letting those tools bypass the framework's security
 controls. The core knows nothing about any specific product: an adapter only
-*translates* a tool's concepts into NEXUS concepts. Two adapters ship today —
-**OWASP ZAP** and **Burp Suite Professional**; Caido and others plug in through
+*translates* a tool's concepts into NEXUS concepts. Three adapters ship today —
+**OWASP ZAP**, **Burp Suite Professional** and **Caido**; others plug in through
 the same interface.
 
 ## Why an adapter layer
@@ -74,6 +74,47 @@ every timeout/cancellation result is flagged `burp_may_still_be_running: true`.
 A timeout is **not** proof that Burp stopped. Reading results from an existing
 scan id (`--scan-id`) performs **no** active requests.
 
+## Enabling Caido
+
+The Caido adapter talks to a running instance's documented **instance GraphQL
+API** (`POST <base_url>/graphql`, default `http://127.0.0.1:8080`). This is the
+same endpoint Caido's own `@caido/sdk-client` wraps, so no Node SDK, extension
+or community MCP server is required.
+
+```yaml
+integrations:
+  caido:
+    enabled: true
+    base_url: http://127.0.0.1:8080   # note: same default port as ZAP
+    api_key_env: CAIDO_PAT            # env var NAME holding a token (never inline)
+    timeout_seconds: 30
+    ssrf_allow: []                    # extra hosts if Caido is remote
+```
+
+Authenticate with an OAuth access token or a **Personal Access Token**
+(`caido_…`) via `Authorization: Bearer <token>`; the token is a secret and never
+appears in logs or error strings. Findings and requests are **project-scoped** —
+a project must be open on the instance.
+
+### Caido capabilities & limitations
+
+| Capability | Supported | Notes |
+|---|---|---|
+| Connection / health | yes | `viewer { __typename id }` liveness + auth probe |
+| Capability discovery | yes | declared, plus live `__schema` introspection (`--introspect`) |
+| Finding retrieval | yes | `findings(…)` normalized, scope-checked at import |
+| HTTP-history retrieval | yes | `requests(…)` metadata only — never sends traffic |
+| Active scan / job start | **no** | Caido exposes **no documented remote scan API** |
+| Stop / cancel | **no** | no job is started and no cancel endpoint exists |
+
+Caido is a manual intercepting proxy: findings come from plugins/scripts, not
+from a "scan this URL" endpoint. The adapter is therefore **read-only** —
+`start_job` refuses to invent a scan API, and forwarding traffic (Replay /
+Automate) is deliberately not driven. The Cloud API (`api.caido.io`) is
+account/team management and out of scope. Caido's schema "is intentionally
+public … however, stability is not guaranteed": a schema change surfaces as a
+normalized `AdapterProtocolError`, never fabricated data.
+
 ## CLI
 
 ```bash
@@ -97,11 +138,26 @@ nexus burp --active https://ex.com/ --authorize-active --import-scan 12
 nexus burp --mock --active https://ex.com/ --authorize-active --domain ex.com
 ```
 
+Caido is read-only (no scan flags):
+
+```bash
+nexus caido --health                                  # connection + auth probe
+nexus caido --capabilities                            # declared capabilities
+nexus caido --introspect                              # live schema discovery
+nexus caido --findings                                 # normalized project findings
+nexus caido --findings --reporter my-plugin            # filter by reporter
+nexus caido --requests --httpql 'resp.code.gte:400'    # history metadata (no traffic)
+nexus caido --findings --import-scan 12 --domain ex.com
+nexus caido --mock --findings                          # offline dry run
+```
+
 - Passive/spider jobs are non-intrusive; **active** scanning requires both
   `integrations.zap.allow_active_scan: true` *and* the per-run
   `--authorize-active` flag.
 - The target is validated against scope before any scan activity; the ZAP
   endpoint itself passes the SSRF guard.
+- Caido never starts a job; its retrieval endpoint passes the SSRF guard and
+  imported finding endpoints are scope-checked.
 
 ## Adapter contract
 
@@ -144,17 +200,19 @@ each finding with its source tool and re-checks scope (out-of-scope findings
 are stored `in_scope=False`). Evidence rows record the tool, source and the
 originating plugin/alert id, and the DB choke point sanitizes them again on
 write. ZAP risk words map to NEXUS severities (`High→P2`, `Medium→P3`,
-`Low/Informational→P4`).
+`Low/Informational→P4`); Burp severities/confidence map through its own words.
+Caido findings carry no severity field, so they import as `P4`/`50` with the
+`reporter` preserved as the plugin id.
 
-## Adding another adapter (Caido / other)
+## Adding another adapter
 
 Create a module that implements `SecurityToolAdapter` and self-registers:
 
 ```python
 from lib.adapters.registry import register
 
-@register("caido")
-def build_caido(spec): return CaidoAdapter(...)
+@register("myproxy")
+def build_myproxy(spec): return MyProxyAdapter(...)
 ```
 
 That is the only change required — `GuardedAdapter`, the CLI wiring point, and
@@ -162,12 +220,14 @@ That is the only change required — `GuardedAdapter`, the CLI wiring point, and
 
 ## Limitations
 
-- The adapter translates a documented REST API; it does not bundle or install
-  the tool. ZAP or Burp must already be running and reachable.
+- The adapter translates a documented API; it does not bundle or install
+  the tool. ZAP, Burp, or Caido must already be running and reachable.
 - Burp support is limited to the **Professional** REST API and to the
   capabilities listed above; it cannot read proxy history or stop a scan.
+- Caido support is **read-only** and limited to its documented GraphQL API
+  (findings + HTTP history); it cannot start, stop, or drive active scanning.
 - Active scanning is intrusive: it is opt-in and per-run authorized, and is
   only as safe as the configured scope.
 - `--mock` uses a deterministic in-memory backend for offline validation; it
   performs **no** real scanning.
-- The standard test suite never contacts a live ZAP, Burp, or external target.
+- The standard test suite never contacts a live ZAP, Burp, Caido, or external target.

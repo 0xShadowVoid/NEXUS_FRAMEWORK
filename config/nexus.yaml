@@ -182,6 +182,12 @@ integrations:
     timeout_seconds: 30
     allow_scan: false            # intrusive crawl+audit stays off unless true + per-run --authorize-active
     ssrf_allow: []               # extra hosts if Burp is remote (e.g. [burp.internal])
+  caido:
+    enabled: false               # Caido instance GraphQL API (read-only: findings + HTTP history)
+    base_url: http://127.0.0.1:8080   # a running Caido instance (note: same default port as ZAP)
+    api_key_env: CAIDO_PAT       # env var NAME holding a Personal Access Token / access token
+    timeout_seconds: 30
+    ssrf_allow: []               # extra hosts if Caido is remote (e.g. [caido.internal])
 
 database:
   path: nexus.db

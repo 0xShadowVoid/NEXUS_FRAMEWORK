@@ -225,6 +225,11 @@ authorization + budget controls.
 | `burp.timeout_seconds` | `30` | per-request timeout |
 | `burp.allow_scan` | `false` | master switch for intrusive crawl+audit (also needs `--authorize-active`) |
 | `burp.ssrf_allow` | `[]` | extra hosts for the SSRF guard (remote Burp) |
+| `caido.enabled` | `false` | enable the Caido adapter (read-only) |
+| `caido.base_url` | `http://127.0.0.1:8080` | running Caido instance GraphQL API endpoint |
+| `caido.api_key_env` | `CAIDO_PAT` | **name** of the env var holding a Personal Access Token / access token (never inline) |
+| `caido.timeout_seconds` | `30` | per-request timeout |
+| `caido.ssrf_allow` | `[]` | extra hosts for the SSRF guard (remote Caido) |
 
 ## Environment variables
 

@@ -682,6 +682,63 @@ def cmd_burp(args: argparse.Namespace) -> int:
             db.close()
 
 
+def cmd_caido(args: argparse.Namespace) -> int:
+    """Read Caido findings / HTTP history through the adapter (read-only)."""
+    from lib.adapters.base import AdapterError, ingest_findings
+    from lib.adapters.caido import DEFAULT_PAGE_SIZE, MockCaidoAdapter
+    from lib.adapters.registry import build_adapter
+
+    cfg = load_config()
+    spec = cfg.integration("caido")
+    mock = bool(getattr(args, "mock", False))
+    if not mock and not spec.get("enabled", False):
+        print("caido integration is disabled (integrations.caido.enabled: false); use --mock to dry-run",
+              file=sys.stderr)
+        return 1
+
+    adapter = MockCaidoAdapter() if mock else build_adapter("caido", cfg)
+    limit = int(getattr(args, "limit", 0) or DEFAULT_PAGE_SIZE)
+    reporter = getattr(args, "reporter", "") or ""
+    httpql = getattr(args, "httpql", "") or ""
+    domain = getattr(args, "domain", "") or ""
+    target_config = cfg.target(domain) if domain else None
+    db = Database(cfg.database_path) if getattr(args, "import_scan", 0) else None
+
+    try:
+        if getattr(args, "capabilities", False):
+            print(json.dumps([c.to_dict() for c in adapter.capabilities()], indent=2))
+            return 0
+        if getattr(args, "introspect", False):
+            print(json.dumps(adapter.introspect(), indent=2, default=str))
+            return 0
+        if getattr(args, "health", False) or not (
+                getattr(args, "findings", False) or getattr(args, "requests", False)):
+            print(json.dumps(adapter.health().to_dict(), indent=2))
+            return 0
+
+        report: dict = {"adapter": "caido", "mock": mock}
+        if getattr(args, "requests", False):
+            rows = adapter.requests(first=limit, httpql=httpql)
+            report["request_count"] = len(rows)
+            report["requests"] = rows
+        else:
+            findings = adapter.findings(first=limit, reporter=reporter)
+            report["finding_count"] = len(findings)
+            report["findings"] = [f.to_dict() for f in findings]
+            if getattr(args, "import_scan", 0):
+                report["import"] = ingest_findings(
+                    db, int(args.import_scan), findings, target_config, phase="caido")
+        print(json.dumps(report, indent=2, default=str))
+        return 0
+    except AdapterError as exc:
+        print(f"caido error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        adapter.close()
+        if db is not None:
+            db.close()
+
+
 def cmd_openapi(args: argparse.Namespace) -> int:
     from lib.openapi import endpoints_from_file, endpoints_to_urls
 
@@ -1202,6 +1259,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_burp.add_argument("--poll", type=float, default=1.0, help="status poll interval seconds")
     p_burp.add_argument("--mock", action="store_true", help="offline deterministic dry run (no live Burp)")
     p_burp.set_defaults(func=cmd_burp)
+
+    p_caido = sub.add_parser("caido", help="read findings/HTTP history from a Caido instance (read-only)")
+    p_caido.add_argument("--health", action="store_true", help="connection + authentication check")
+    p_caido.add_argument("--capabilities", action="store_true", help="list declared adapter capabilities")
+    p_caido.add_argument("--introspect", action="store_true", help="live schema discovery (GraphQL introspection)")
+    p_caido.add_argument("--findings", action="store_true", help="retrieve normalized project findings")
+    p_caido.add_argument("--requests", action="store_true", help="read proxied HTTP-history metadata (no traffic sent)")
+    p_caido.add_argument("--reporter", default="", help="filter findings by reporter (plugin) name")
+    p_caido.add_argument("--httpql", default="", help="HTTPQL filter for --requests (e.g. 'resp.code.gte:400')")
+    p_caido.add_argument("--limit", type=int, default=0, help="page size (default 50)")
+    p_caido.add_argument("--import-scan", dest="import_scan", type=int, default=0,
+                         help="import collected findings into this NEXUS scan id")
+    p_caido.add_argument("--domain", default="", help="engagement scope domain (for import scope checks)")
+    p_caido.add_argument("--mock", action="store_true", help="offline deterministic dry run (no live Caido)")
+    p_caido.set_defaults(func=cmd_caido)
 
     p_c2 = sub.add_parser("c2", help="start the Discord/Telegram control bot")
     p_c2.set_defaults(func=cmd_c2)
