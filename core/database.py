@@ -205,13 +205,19 @@ class Database:
         out_of_scope: list[str] | None = None,
         config: dict[str, Any] | None = None,
     ) -> int:
-        """Insert or update a target; returns the target id."""
-        row = self.query("SELECT id FROM targets WHERE domain = ?", (domain,))
-        if row:
-            return int(row[0]["id"])
+        """Insert a target if absent; returns its id (first write wins).
+
+        Conflict-safe ``INSERT ... ON CONFLICT(domain) DO NOTHING`` closes the
+        previous read-then-write window, so concurrent upserts of the same
+        domain can no longer create duplicate rows or raise ``IntegrityError``
+        (``targets.domain`` is ``UNIQUE``). An existing target keeps its
+        original platform/scope/config — its id is returned unchanged, exactly
+        like the former insert-only path.
+        """
         cur = self.execute(
             "INSERT INTO targets (domain, platform, type, scope, in_scope, out_of_scope,"
-            " config, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            " config, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            " ON CONFLICT(domain) DO NOTHING",
             (
                 domain,
                 platform,
@@ -223,7 +229,10 @@ class Database:
                 _now(),
             ),
         )
-        return int(cur.lastrowid)
+        if cur.rowcount == 1:
+            return int(cur.lastrowid)
+        row = self.query("SELECT id FROM targets WHERE domain = ?", (domain,))
+        return int(row[0]["id"])
 
     def get_target(self, domain: str) -> dict[str, Any] | None:
         rows = self.query("SELECT * FROM targets WHERE domain = ?", (domain,))
@@ -469,20 +478,28 @@ class Database:
         enabled: bool = True,
         next_run: str | None = None,
     ) -> int:
-        existing = self.query("SELECT id FROM schedules WHERE name = ?", (name,))
-        if existing:
-            self.execute(
-                "UPDATE schedules SET target_id = ?, frequency = ?, cron_expression = ?,"
-                " intensity = ?, enabled = ? WHERE id = ?",
-                (target_id, frequency, cron_expression, intensity, 1 if enabled else 0, existing[0]["id"]),
-            )
-            return int(existing[0]["id"])
-        cur = self.execute(
+        """Insert or update a schedule by name; returns its id.
+
+        Conflict-safe single statement: ``ON CONFLICT(name) DO UPDATE`` rewrites
+        exactly the fields the previous UPDATE path did (``target_id``,
+        ``frequency``, ``cron_expression``, ``intensity``, ``enabled``) and
+        leaves ``next_run``/``created_at``/``last_run`` untouched, so behavior
+        is unchanged while the read-then-write race is gone (``schedules.name``
+        is ``UNIQUE``).
+        """
+        self.execute(
             "INSERT INTO schedules (name, target_id, frequency, cron_expression, intensity,"
-            " enabled, next_run, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            " enabled, next_run, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            " ON CONFLICT(name) DO UPDATE SET"
+            " target_id = excluded.target_id,"
+            " frequency = excluded.frequency,"
+            " cron_expression = excluded.cron_expression,"
+            " intensity = excluded.intensity,"
+            " enabled = excluded.enabled",
             (name, target_id, frequency, cron_expression, intensity, 1 if enabled else 0, next_run, _now()),
         )
-        return int(cur.lastrowid)
+        row = self.query("SELECT id FROM schedules WHERE name = ?", (name,))
+        return int(row[0]["id"])
 
     def list_schedules(self, enabled_only: bool = False) -> list[dict[str, Any]]:
         if enabled_only:
@@ -579,10 +596,16 @@ class Database:
         checkpoint: str | None = None,
         error: str | None = None,
     ) -> int:
-        """Insert or update the lifecycle row for one phase of one scan."""
-        rows = self.query(
-            "SELECT id FROM phase_runs WHERE scan_id = ? AND phase = ?", (scan_id, phase)
-        )
+        """Insert or update the lifecycle row for one phase of one scan.
+
+        ``phase_runs`` has no ``UNIQUE(scan_id, phase)`` constraint, and an
+        additive-only migration cannot safely add one once duplicate rows may
+        already exist — so the read-then-write is serialized inside the
+        connection lock instead. Holding ``self._lock`` across the lookup and
+        the insert/update closes the window where two threads could both miss
+        the row and insert duplicates. ``_lock`` is reentrant, so the nested
+        ``query``/``execute`` calls are safe.
+        """
         sets = ["state = ?"]
         params: list[Any] = [state]
         if started_at is not None:
@@ -600,19 +623,23 @@ class Database:
         if error is not None:
             sets.append("error = ?")
             params.append(error)
-        if rows:
-            params.append(rows[0]["id"])
-            self.execute(
-                f"UPDATE phase_runs SET {', '.join(sets)} WHERE id = ?", tuple(params)
+        with self._lock:
+            rows = self.query(
+                "SELECT id FROM phase_runs WHERE scan_id = ? AND phase = ?", (scan_id, phase)
             )
-            return int(rows[0]["id"])
-        cur = self.execute(
-            "INSERT INTO phase_runs (scan_id, phase, state, started_at, ended_at,"
-            " attempts, checkpoint, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (scan_id, phase, state, started_at or _now(), ended_at, attempts or 0,
-             checkpoint, error),
-        )
-        return int(cur.lastrowid)
+            if rows:
+                params.append(rows[0]["id"])
+                self.execute(
+                    f"UPDATE phase_runs SET {', '.join(sets)} WHERE id = ?", tuple(params)
+                )
+                return int(rows[0]["id"])
+            cur = self.execute(
+                "INSERT INTO phase_runs (scan_id, phase, state, started_at, ended_at,"
+                " attempts, checkpoint, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (scan_id, phase, state, started_at or _now(), ended_at, attempts or 0,
+                 checkpoint, error),
+            )
+            return int(cur.lastrowid)
 
     def list_phase_runs(self, scan_id: int) -> list[dict[str, Any]]:
         return self.query(
