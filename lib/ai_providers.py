@@ -46,6 +46,8 @@ class ProviderSpec:
     supports_multi_key: bool = False
     supports_reasoning_effort: bool = False
     verified: bool = True
+    runtime: str = ""            # local-runtime probe flavor ("" = none)
+    local: bool = False          # True when no cloud egress is involved
     notes: str = ""
 
     @property
@@ -63,6 +65,8 @@ class ProviderSpec:
             "supports_reasoning_effort": self.supports_reasoning_effort,
             "verified": self.verified,
             "supported": self.supported,
+            "runtime": self.runtime,
+            "local": self.local,
             "notes": self.notes,
         }
 
@@ -97,11 +101,12 @@ PROVIDER_SPECS: dict[str, ProviderSpec] = {
     ),
     "ollama": ProviderSpec(
         "ollama", base_url="http://localhost:11434/v1",
-        default_model="llama3.1", keyless=True,
+        default_model="llama3.1", keyless=True, runtime="ollama", local=True,
         notes="Local, no API key; operator runs the server.",
     ),
     "custom": ProviderSpec(
         "custom", base_url="", default_model="", supports_multi_key=True,
+        runtime="openai-compatible",
         notes="Any OpenAI-compatible endpoint; set CUSTOM_BASE_URL / <PROVIDER>_BASE_URL.",
     ),
     "opencode": ProviderSpec(
@@ -135,6 +140,22 @@ def known_providers() -> tuple[str, ...]:
 def http_providers() -> tuple[str, ...]:
     """Providers with a verified OpenAI-compatible HTTP integration."""
     return tuple(p for p, s in PROVIDER_SPECS.items() if s.supported)
+
+
+def runtime_providers() -> tuple[str, ...]:
+    """Providers with a discoverable local/OpenAI-compatible runtime."""
+    return tuple(p for p, s in PROVIDER_SPECS.items() if s.runtime)
+
+
+def local_providers() -> tuple[str, ...]:
+    """Providers that are local-only (no cloud egress, no API key)."""
+    return tuple(p for p, s in PROVIDER_SPECS.items() if s.local)
+
+
+def is_runtime_provider(provider: str) -> bool:
+    """True when *provider* has a discoverable runtime flavor (local/custom)."""
+    spec = get_spec(provider)
+    return bool(spec and spec.runtime)
 
 
 def supports_reasoning_effort(provider: str, effort: str = "") -> bool:

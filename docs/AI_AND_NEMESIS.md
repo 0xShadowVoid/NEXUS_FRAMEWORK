@@ -70,6 +70,25 @@ ordered fallback chain. Configuration is validated at startup; unsupported model
 [CONFIGURATION.md](CONFIGURATION.md#nemesisagents-per-agent-ai) for the schema and
 `python -m nexus agent "..." --agent default` to select one.
 
+### Local models (offline)
+
+`ollama` (native API) and any OpenAI-compatible local server reachable through `custom`
+(llama.cpp, LM Studio, vLLM, a LAN box) are discovered through the runtime adapter
+(`lib/local_runtime.py`). Chat traffic still goes through the **same** OpenAI-compatible
+`/chat/completions` path as every other provider — the adapter only adds connection checks,
+installed-model discovery and per-model capability metadata (context length, tools/vision).
+
+```powershell
+python -m nexus ai-runtime                       # probe every local runtime
+python -m nexus ai-runtime --provider ollama     # probe one
+```
+
+`config/nexus.yaml` -> `ai.provider: ollama` (keyless) or `ai.provider: custom` with
+`CUSTOM_BASE_URL`. A model can be pinned with `ai.model` / per-agent `nemesis.agents.<name>.model`.
+An unreachable runtime, a bad response, or a non-local URL is reported as `available: false` with
+a reason and never blocks a scan (the SSRF guard still applies; a missing `CUSTOM_BASE_URL` is a
+clear configuration error, not a crash).
+
 ### OpenCode and Cline
 
 - **OpenCode** is integrated through its own CLI and its own authentication. NEXUS does **not**

@@ -40,6 +40,7 @@ from lib.ai_errors import (
 from lib.ai_providers import (
     PROVIDER_SPECS,
     ProviderUnsupportedError,
+    is_runtime_provider,
     supports_reasoning_effort,
     validate_reasoning_effort,
 )
@@ -484,6 +485,30 @@ class AIAnalyzer:
 
     # -- diagnostics --------------------------------------------------------
 
+    def runtime(self, provider: str = ""):
+        """Local-runtime adapter for *provider* (or the first in the chain).
+
+        Returns ``None`` for cloud providers or when nothing is configured;
+        building the adapter never makes a network call.
+        """
+        from lib.local_runtime import runtime_for
+
+        name = str(provider or (self.providers[0] if self.providers else "")).lower()
+        if not is_runtime_provider(name):
+            return None
+        return runtime_for(name, self.base_url_for(name), self.model_for(name), self.timeout)
+
+    def check_runtime(self, provider: str = "") -> dict[str, Any]:
+        """Probe the local runtime and return its health/inventory (opt-in)."""
+        adapter = self.runtime(provider)
+        if adapter is None:
+            return {
+                "provider": "", "flavor": "", "base_url": "",
+                "available": False, "model_count": 0, "models": [],
+                "error": "no local/OpenAI-compatible runtime in the provider chain",
+            }
+        return adapter.probe().to_dict()
+
     def key_status(self) -> list[dict]:
         """Masked status of all configured keys (for CLI output)."""
         return self.pools.describe_all()
@@ -495,5 +520,6 @@ class AIAnalyzer:
             "providers_with_keys": self.pools.providers_with_keys(),
             "reasoning_effort": self.reasoning_effort or "off",
             "max_retries": self.max_retries,
+            "runtime_providers": [p for p in self.providers if is_runtime_provider(p)],
             "stats": dict(self.stats),
         }

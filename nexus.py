@@ -556,6 +556,30 @@ def cmd_ai_providers(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ai_runtime(args: argparse.Namespace) -> int:
+    from lib.ai_analyzer import AIAnalyzer
+    from lib.ai_providers import runtime_providers
+
+    cfg = load_config()
+    analyzer = AIAnalyzer.from_config(cfg.ai, cfg.env)
+    selected = (getattr(args, "provider", "") or "").lower()
+    if selected:
+        adapter = analyzer.runtime(selected)
+        if adapter is None:
+            print(json.dumps({
+                "error": f"provider {selected!r} has no discoverable local runtime",
+                "runtime_providers": list(runtime_providers()),
+            }, indent=2))
+            return 1
+        statuses = [adapter.probe().to_dict()]
+    else:
+        names = [p for p in analyzer.providers if analyzer.runtime(p)]
+        names = names or list(runtime_providers())
+        statuses = [analyzer.runtime(p).probe().to_dict() for p in names]
+    print(json.dumps({"runtimes": statuses}, indent=2, default=str))
+    return 0
+
+
 def cmd_ai_set_key(args: argparse.Namespace) -> int:
     from lib.key_pool import set_key_in_env_file
 
@@ -837,6 +861,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_ap = sub.add_parser("ai-providers", help="show AI providers, capabilities and support status")
     p_ap.set_defaults(func=cmd_ai_providers)
+
+    p_art = sub.add_parser("ai-runtime", help="probe a local model runtime (Ollama/OpenAI-compatible)")
+    p_art.add_argument("--provider", default="", help="provider to probe (default: all local runtimes)")
+    p_art.set_defaults(func=cmd_ai_runtime)
 
     p_ask = sub.add_parser("ai-set-key", help="add an AI API key (multi-key failover)")
     p_ask.add_argument("--provider", required=True, choices=["openai", "glm", "deepseek", "gemini", "kimi", "openrouter", "custom"])

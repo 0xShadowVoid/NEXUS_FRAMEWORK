@@ -65,6 +65,7 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 - `graphql --file RESULT.json` — analyze a GraphQL introspection result.
 - `ai-keys` — show AI key-pool status (masked) and configured agents.
 - `ai-providers` — list AI providers, capabilities and verified/supported status.
+- `ai-runtime [--provider NAME]` — probe a local model runtime (Ollama / OpenAI-compatible) for connection and installed models.
 - `ai-set-key --provider openai|glm|deepseek|gemini|kimi|openrouter|custom --key KEY` — store an AI key (multi-key failover pool).
 
 ## Exit behavior
