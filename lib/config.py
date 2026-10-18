@@ -182,6 +182,11 @@ class Config:
         return section if isinstance(section, dict) else {}
 
     @property
+    def mcp(self) -> dict[str, Any]:
+        """Model Context Protocol client settings — empty when unset."""
+        return self._main.get("mcp", {}) or {}
+
+    @property
     def schedules(self) -> dict[str, Any]:
         return self._main.get("schedules", {})
 

@@ -189,5 +189,32 @@ integrations:
     timeout_seconds: 30
     ssrf_allow: []               # extra hosts if Caido is remote (e.g. [caido.internal])
 
+# Model Context Protocol (MCP) client (Task 21). OFF by default; every server
+# must be explicitly enabled and every callable tool allowlisted. Servers are
+# UNTRUSTED: NEXUS still enforces scope, SSRF, authorization, budgets, result
+# bounds and redaction on every tool invocation. Secrets are referenced by env
+# var NAME (auth_token_env) and are never written here.
+mcp:
+  enabled: false                 # master switch; no MCP server is contacted unless true
+  servers: []                    # each server also needs enabled: true
+  # Example (commented) — a local stdio server:
+  # servers:
+  #   - name: filesystem
+  #     enabled: false
+  #     transport: stdio         # stdio | streamable-http
+  #     command: [npx, -y, "@modelcontextprotocol/server-filesystem", /data]  # argv list, no shell
+  #     tools: [read_file, list_directory]   # per-server allowlist (empty = deny all)
+  #     allow_active: false      # active/destructive tools need true + per-call --authorize-active
+  #     timeout_seconds: 30
+  #     max_result_bytes: 262144
+  #     max_concurrency: 2
+  #   - name: remote-tools
+  #     enabled: false
+  #     transport: streamable-http
+  #     url: https://mcp.example.com/mcp
+  #     auth_token_env: MCP_REMOTE_TOKEN    # env var NAME holding a bearer token (never inline)
+  #     tools: [echo]
+  #     ssrf_allow: []           # extra hosts if the endpoint is on a private network
+
 database:
   path: nexus.db

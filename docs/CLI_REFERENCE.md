@@ -26,7 +26,7 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 | `--resume SCAN_ID` | resume a previous scan |
 | `--cve ID` | include a specific CVE in context |
 
-## Commands (32)
+## Commands (33)
 
 ### Scanning
 - `hunt TARGET` — scan a single target (accepts the shared scan flags above).
@@ -75,6 +75,7 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 - `zap [--health] [--capabilities] [--passive URL | --active URL --authorize-active] [--domain D] [--import-scan ID] [--mock]` — drive the OWASP ZAP adapter through the guarded, scope-checked framework (see [ADAPTERS.md](ADAPTERS.md)).
 - `burp [--health] [--capabilities] [--issue-definitions] [--active URL --authorize-active] [--scan-id ID] [--domain D] [--import-scan ID] [--collect] [--timeout S] [--poll S] [--mock]` — drive the Burp Suite Professional adapter (Pro REST API) through the same guarded, scope-checked framework (see [ADAPTERS.md](ADAPTERS.md)).
 - `caido [--health] [--capabilities] [--introspect] [--findings] [--requests] [--reporter NAME] [--httpql Q] [--limit N] [--import-scan ID] [--domain D] [--mock]` — read findings/HTTP history from a Caido instance's GraphQL API (read-only; see [ADAPTERS.md](ADAPTERS.md)).
+- `mcp [--list] [--config-check] [--server NAME] [--status | --tools | --call TOOL [--arg k=v]...] [--authorize-active] [--domain D] [--mock]` — drive external MCP servers through the guarded, scope-checked client (disabled by default; see [MCP.md](MCP.md)).
 
 ## Exit behavior
 

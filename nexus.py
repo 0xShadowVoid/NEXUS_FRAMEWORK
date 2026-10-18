@@ -739,6 +739,97 @@ def cmd_caido(args: argparse.Namespace) -> int:
             db.close()
 
 
+def cmd_mcp(args: argparse.Namespace) -> int:
+    """Connect to configured MCP servers and invoke allowlisted tools (policy-gated)."""
+    from lib.mcp.gateway import (
+        GuardedMcpServer,
+        find_server_policy,
+        load_server_policies,
+        mock_server,
+    )
+
+    cfg = load_config()
+    mock = bool(getattr(args, "mock", False))
+    global_enabled = bool((cfg.mcp or {}).get("enabled", False))
+
+    if getattr(args, "list", False) or getattr(args, "config_check", False):
+        check = bool(getattr(args, "config_check", False))
+        servers = []
+        for policy in load_server_policies(cfg):
+            entry = {
+                "name": policy.name,
+                "enabled": policy.enabled,
+                "transport": policy.transport,
+                "tools_allowlist": list(policy.tools),
+                "allow_active": policy.allow_active,
+            }
+            if check:
+                entry["issues"] = policy.validate()
+            servers.append(entry)
+        print(json.dumps({"mcp_enabled": global_enabled, "servers": servers}, indent=2, default=str))
+        return 0
+
+    db = None
+    if mock:
+        domain = getattr(args, "domain", "")
+        target_config = cfg.target(domain) if domain else None
+        server = mock_server(
+            target_config=target_config,
+            allow_active=bool(getattr(args, "authorize_active", False)),
+        )
+    else:
+        if not global_enabled:
+            print("mcp client is disabled (mcp.enabled: false); use --mock to dry-run",
+                  file=sys.stderr)
+            return 1
+        name = str(getattr(args, "server", "") or "")
+        if not name:
+            print("--server NAME is required (see: nexus mcp --list)", file=sys.stderr)
+            return 1
+        policy = find_server_policy(cfg, name)
+        if policy is None:
+            print(f"unknown mcp server: {name!r} (see: nexus mcp --list)", file=sys.stderr)
+            return 1
+        if not policy.enabled:
+            print(f"mcp server {name!r} is disabled (servers[..].enabled: false); use --mock to dry-run",
+                  file=sys.stderr)
+            return 1
+        domain = getattr(args, "domain", "")
+        target_config = cfg.target(domain) if domain else None
+        db = Database(cfg.database_path) if str(getattr(args, "call", "") or "") else None
+        server = GuardedMcpServer(policy, db=db, target_config=target_config)
+
+    try:
+        status = server.connect()
+        call = str(getattr(args, "call", "") or "")
+        if str(status.get("error") or "") and not getattr(args, "tools", False) and not call:
+            print(json.dumps(status, indent=2, default=str))
+            return 1
+        if getattr(args, "tools", False):
+            print(json.dumps(server.capabilities(), indent=2, default=str))
+            return 0
+        if not call:
+            print(json.dumps(status, indent=2, default=str))
+            return 0
+
+        parsed: dict[str, Any] = {}
+        for item in getattr(args, "arg", []) or []:
+            if "=" not in str(item):
+                print(f"invalid --arg {item!r} (expected key=value)", file=sys.stderr)
+                return 1
+            key, value = str(item).split("=", 1)
+            parsed[key] = value
+        result = server.call(
+            call, parsed, authorize_active=bool(getattr(args, "authorize_active", False))
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0 if result.get("status") == "ok" else 1
+    finally:
+        server.close()
+        if db is not None:
+            db.close()
+
+
 def cmd_openapi(args: argparse.Namespace) -> int:
     from lib.openapi import endpoints_from_file, endpoints_to_urls
 
@@ -1274,6 +1365,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_caido.add_argument("--domain", default="", help="engagement scope domain (for import scope checks)")
     p_caido.add_argument("--mock", action="store_true", help="offline deterministic dry run (no live Caido)")
     p_caido.set_defaults(func=cmd_caido)
+
+    p_mcp = sub.add_parser("mcp", help="connect to configured MCP servers (discovery; policy-gated tool calls)")
+    p_mcp.add_argument("--list", action="store_true", help="list configured MCP servers (no connection)")
+    p_mcp.add_argument("--config-check", dest="config_check", action="store_true",
+                       help="validate MCP configuration (no connection)")
+    p_mcp.add_argument("--server", default="", help="configured server name to connect to")
+    p_mcp.add_argument("--status", action="store_true",
+                       help="connection + discovered capability status (no tool executed)")
+    p_mcp.add_argument("--tools", action="store_true",
+                       help="list discovered tools with schemas (no tool executed)")
+    p_mcp.add_argument("--call", default="", help="invoke an allowlisted tool by name")
+    p_mcp.add_argument("--arg", action="append", default=[], help="tool argument key=value (repeatable)")
+    p_mcp.add_argument("--authorize-active", dest="authorize_active", action="store_true",
+                       help="explicit authorization for active/destructive tools")
+    p_mcp.add_argument("--domain", default="", help="engagement scope domain (for scope-checked tools)")
+    p_mcp.add_argument("--mock", action="store_true", help="offline deterministic dry run (built-in fake server)")
+    p_mcp.set_defaults(func=cmd_mcp)
 
     p_c2 = sub.add_parser("c2", help="start the Discord/Telegram control bot")
     p_c2.set_defaults(func=cmd_c2)

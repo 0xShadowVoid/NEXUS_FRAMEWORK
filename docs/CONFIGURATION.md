@@ -205,6 +205,32 @@ present, the legacy `ai:` settings are used unchanged.
 
 `base_dir: results`, `exports_dir: exports`, `database.path: nexus.db`.
 
+## `mcp:`
+
+External **MCP (Model Context Protocol) client** servers (see [MCP.md](MCP.md)).
+Disabled by default; every server must also be explicitly enabled, and every
+callable tool must be on its per-server allowlist. MCP servers are untrusted —
+NEXUS still enforces scope, SSRF, authorization, budgets, result bounds and
+redaction, and the server can never change NEXUS configuration.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | master switch; no server is contacted while false |
+| `servers` | `[]` | list (or name → entry map) of server definitions |
+| `servers[].name` | — | stable server id (used in status/audit) |
+| `servers[].enabled` | `false` | server must be enabled **and** the master switch on |
+| `servers[].transport` | `stdio` | `stdio` or `streamable-http` |
+| `servers[].command` | `[]` | stdio only: argv **list** (never a shell string) |
+| `servers[].url` | `""` | streamable-http only: single MCP endpoint |
+| `servers[].tools` | `[]` | per-server allowlist (**empty = deny all**) |
+| `servers[].allow_active` | `false` | master switch for active/destructive tools (also needs `--authorize-active`) |
+| `servers[].timeout_seconds` | `30` | per-request timeout |
+| `servers[].max_result_bytes` | `262144` | hard cap on a single result/message |
+| `servers[].max_concurrency` | `2` | concurrent invocations per server |
+| `servers[].auth_token_env` | `""` | **name** of the env var holding a bearer token (never inline) |
+| `servers[].ssrf_allow` | `[]` | extra hosts permitted for the endpoint |
+| `servers[].scope_tools` | `{}` | map of tool name → target argument (e.g. `{scan: target}`) |
+
 ## `integrations:`
 
 Third-party security-tool adapters (see [ADAPTERS.md](ADAPTERS.md)). Every
@@ -253,6 +279,7 @@ Framework variables (set in the OS environment, never in files):
 |---|---|
 | `NEXUS_GUI_USER` / `NEXUS_GUI_PASS` | Local GUI administrator credentials. If unset the GUI **fails closed** (HTTP 503). Scan targets submitted through the GUI are authorized against the configured `targets:` scope; a target not covered by any configured `in_scope` is rejected (HTTP 403). |
 | `NEXUS_VERSION` | Read-only override used by some test harnesses; normally derived from `VERSION`. |
+| *(MCP bearer token)* | Each `mcp.servers[].auth_token_env` names an env var (e.g. `MCP_REMOTE_TOKEN`) holding a Streamable-HTTP bearer token. Set in `config/.keys.env` or the OS environment; the value is never written to `nexus.yaml` and is never logged. |
 
 ## Startup failures
 
