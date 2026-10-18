@@ -13,3 +13,8 @@ config/.keys.env
 .gitignore
 .venv/
 venv/
+build/
+dist/
+*.egg-info/
+.coverage
+browser-artifacts/

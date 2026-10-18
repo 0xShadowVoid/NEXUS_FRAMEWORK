@@ -24,3 +24,25 @@ jobs:
         run: python nexus.py secretscan --history
       - name: Verify the pre-commit hook script is intact
         run: sh -n scripts/hooks/pre-commit
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t nexus-framework:ci .
+      - name: Smoke test (offline doctor, no external tools or secrets)
+        run: docker run --rm nexus-framework:ci doctor
+      - name: Assert required files are present
+        run: |
+          docker run --rm --entrypoint sh nexus-framework:ci -c \
+            'test -f nexus.py && test -f config/nexus.yaml && test -f config/false_positive_filters.yaml'
+      - name: Assert no secrets or build artifacts are baked in
+        run: |
+          docker run --rm --entrypoint sh nexus-framework:ci -c 'test ! -f config/.keys.env'
+          docker run --rm --entrypoint sh nexus-framework:ci -c 'test ! -f nexus.db'
+          docker run --rm --entrypoint sh nexus-framework:ci -c 'test ! -d build && test ! -d dist && test ! -d nexus_framework.egg-info && test ! -d browser-artifacts'
+      - name: Assert the dev extra (pytest) is not shipped in the runtime image
+        run: |
+          docker run --rm --entrypoint python nexus-framework:ci -c \
+            "import importlib.util as u, sys; sys.exit(1 if u.find_spec('pytest') else 0)"

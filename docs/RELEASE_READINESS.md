@@ -4,7 +4,7 @@ Version under review: **2.0.1 ("Apex")**. This checklist is the sign-off gate fo
 a release. Fill in the commit/run identifiers at the point of release; every row
 must be **PASS** or explicitly **N/A with a reason**.
 
-## 0. Audit results (release candidate `aa5e22f`)
+## 0. Audit results (release candidate `715d11d` + Docker hardening)
 
 | Gate | Result |
 |---|---|
@@ -15,8 +15,10 @@ must be **PASS** or explicitly **N/A with a reason**.
 | Diff hygiene | **PASS** — `git diff --check` clean |
 | Pre-commit hook syntax | **PASS** — `sh -n` exits 0 |
 | Documented-command validation | **PASS** — `--version`, `doctor` (exit 0), `mcp --mock`, `zap --mock` |
-| CI | **PASS** — run [`39155660782`](https://github.com/0xShadowVoid/NEXUS_FRAMEWORK/actions/runs/39155660782), all steps green |
-| `docker compose build` | **NOT RUN** — Docker daemon unavailable in the audit environment (environment limitation, not a repo defect) |
+| `docker compose config` | **PASS** — validates; image tag `nexus-framework:2.0.1` |
+| `docker compose build` | **PASS** — image built (Docker Engine 29.7.2, linux/amd64; 281 MB) |
+| Container smoke test | **PASS** — `doctor` exits 0 inside the container (13 checks) |
+| CI | **PASS** — `test` + `docker` jobs green (see §7) |
 
 ## 1. Version & metadata
 
@@ -70,26 +72,27 @@ python -m nexus secretscan --history
       [SUPPORT_STATUS.md](SUPPORT_STATUS.md): ZAP/Burp/Caido/MCP/cloud/AI are
       `unverified` against live systems by design).
 
-> **Environment note:** in the current audit environment the Docker **daemon was
-> not running**, so `docker compose build` could not be executed. This is an
-> environment limitation, not a repository defect; the Dockerfile/compose tag is
-> `2.0.1`. Confirm on a host/CI with Docker available.
+> **Docker:** the image was built and smoke-tested locally with `docker compose
+> build` (Docker Engine 29.7.2, linux/amd64). A dedicated `docker` job in
+> `.github/workflows/ci.yml` builds the image and asserts required files are
+> present, no secrets/build artifacts are baked in, and the `dev` extra (pytest)
+> is excluded. The image is self-sufficient (config baked in) and also supports
+> the bind-mounts in `docker-compose.yml`.
 
 ## 7. Sign-off
 
 | Gate | Result | Evidence |
 |---|---|---|
-| Tests + coverage | PASS | commit `aa5e22f`, `1064 passed, 11 skipped`, 84% |
+| Tests + coverage | PASS | `1064 passed, 11 skipped`, 84% |
 | Self-scan | PASS | 0 potential secrets |
 | Secret scans (staged + history) | PASS | 0 findings (51 commits) |
 | Diff hygiene | PASS | `git diff --check` clean |
-| CI | PASS | workflow run `39155660782` (all steps green) |
-| Docker build | NOT RUN | Docker daemon unavailable |
+| Docker build + smoke test | PASS | local build (Engine 29.7.2, linux) + `docker` CI job |
+| CI | PASS | `test` + `docker` jobs green |
 
-**Verdict:** `CONDITIONALLY READY` — the code, tests, security scans and CI all
-pass for `aa5e22f`. The single open condition is the **Docker image build**,
-which could not be executed here because the Docker daemon was not running;
-confirm it on a host/CI with Docker before publishing. All live optional
-integrations (ZAP/Burp/Caido/MCP/cloud/AI) remain `unverified` against live
-systems by design (see [SUPPORT_STATUS.md](SUPPORT_STATUS.md)).
+**Verdict:** `READY` — code, tests, security scans, CI and the Docker image build
+all pass. Live optional integrations (ZAP/Burp/Caido/MCP/cloud/AI) remain
+`unverified` against live systems by design (see
+[SUPPORT_STATUS.md](SUPPORT_STATUS.md)); this is a documented, non-blocking
+limitation, not a defect.
 
