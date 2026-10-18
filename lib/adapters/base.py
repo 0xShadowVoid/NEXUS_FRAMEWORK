@@ -411,13 +411,18 @@ class AdapterPolicy:
     killswitch: KillSwitch | None = None
 
     def check_target(self, target: str) -> tuple[bool, str]:
-        """Scope (cheap, first) then SSRF guard. Returns (ok, reason)."""
-        if self.target_config is not None:
-            try:
-                if not validate_target_scope(target, self.target_config):
-                    return False, "scope: target not authorized"
-            except ScopeException as exc:
-                return False, f"scope: {exc}"
+        """Scope (cheap, first) then SSRF guard. Returns (ok, reason).
+
+        Fails closed when no ``target_config`` was supplied: an omitted scope
+        context must never be read as "everything is in scope".
+        """
+        if self.target_config is None:
+            return False, "scope: no target configuration (fail closed)"
+        try:
+            if not validate_target_scope(target, self.target_config):
+                return False, "scope: target not authorized"
+        except ScopeException as exc:
+            return False, f"scope: {exc}"
         ok, reason = is_safe_url(target, allow=set(self.ssrf_allow), local_ok=True)
         if not ok:
             return False, f"ssrf: {reason}"

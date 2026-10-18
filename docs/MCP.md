@@ -131,6 +131,17 @@ and `--tools` never execute a tool.
 - **Schema validation** — arguments are checked against the discovered
   `inputSchema` before execution; unknown/extra arguments are rejected when the
   schema forbids them, and a tool with an invalid schema is never registered.
+  Schema checking is intentionally **shallow**: it validates declared top-level
+  properties (type/enum/required) and rejects undeclared keys only when the
+  schema sets `additionalProperties: false`. It does **not** recurse into nested
+  object/array properties, so it must never be relied on as the safety boundary
+  (see *Payload safety* and *Limitations*).
+- **Payload safety** — every string argument is screened by the payload guard
+  (destructive SQL, reverse shells, download-and-execute chains, webshells,
+  filesystem destruction) **recursively**, so a blocked payload hidden inside an
+  object or array argument is still denied. This is the real backstop; it does
+  not depend on how deeply a tool nests its arguments or on
+  `additionalProperties` being set.
 - **Read-only vs active** — an active/destructive tool needs both `allow_active`
   in policy **and** a per-call `--authorize-active`.
 - **Scope** — a tool mapped in `scope_tools` has its target argument checked
@@ -169,3 +180,26 @@ elicitation, prompts/resources subscription), OAuth flows, or automatic retries
 and reconnection beyond a single bounded attempt. It reuses NEXUS's existing
 policy pipeline rather than introducing a second tool-execution framework, and it
 never lets an MCP server alter NEXUS configuration.
+
+### JSON Schema is not a security boundary
+
+Argument validation understands only the JSON-Schema subset NEXUS needs
+(`type` / `properties` / `required` / `enum`, plus top-level
+`additionalProperties`). It is **not** a full JSON-Schema implementation and is
+**not** the enforcement layer:
+
+- it does **not** recurse into nested `object`/`array` properties, so a nested
+  string is not individually type/enum-checked;
+- it only rejects undeclared keys when the schema explicitly sets
+  `additionalProperties: false` — a permissive or missing flag lets extra
+  top-level keys through schema validation;
+- it does not evaluate `oneOf`/`anyOf`/`allOf`, `patternProperties`, `$ref`,
+  numeric bounds or string patterns.
+
+Because of this, the **payload guard is the authoritative safety check** and runs
+recursively over all string arguments regardless of the schema. Treat a
+discovered `inputSchema` as untrusted metadata, not as a guarantee: NEXUS denies
+by default and validates defensively at the gateway stage
+(`lib.nemesis.mcp.McpGateway` → `lib.payload_guard.validate_payload_tree`). A
+regression suite proves a payload hidden in a nested argument is denied even when
+the schema accepts it (`tests/unit/test_pass30_integration_audit.py`).

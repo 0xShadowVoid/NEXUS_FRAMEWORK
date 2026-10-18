@@ -183,7 +183,11 @@ Value objects: `JobSpec` (target/kind/params/authorized/timeout),
 ## Security model (enforced by `GuardedAdapter`)
 
 - **Scope (fail closed):** `validate_target_scope` runs before any job starts;
-  an out-of-scope or malformed target raises `AdapterPolicyError`.
+  an out-of-scope or malformed target raises `AdapterPolicyError`. A missing
+  `target_config` is **not** treated as "everything is in scope" — the gate
+  denies with `scope: no target configuration (fail closed)`. The CLI always
+  derives one (`cfg.target(extract_host(target))`), so supported adapter paths
+  always carry a scope context.
 - **Authorization:** active/intrusive jobs require the policy master switch
   (`allow_active`) *and* per-run authorization (`spec.authorized`).
 - **SSRF:** the tool endpoint and target URLs pass `lib.ssrf_guard.is_safe_url`.
@@ -228,6 +232,15 @@ That is the only change required — `GuardedAdapter`, the CLI wiring point, and
   (findings + HTTP history); it cannot start, stop, or drive active scanning.
 - Active scanning is intrusive: it is opt-in and per-run authorized, and is
   only as safe as the configured scope.
+- **Scope model (residual risk):** an unlisted domain self-scopes — `cfg.target(d)`
+  defaults `in_scope` to `[d]` when the domain has no `targets:` entry, so the
+  scope gate authorizes exactly the target you passed (it never widens to
+  siblings/subdomains). To restrict a target you must add an explicit `targets:`
+  entry with `in_scope`/`out_of_scope`. Review scope config before active runs.
+- Read-only retrieval paths (Caido `findings`/`requests`, Burp issue definitions,
+  adapter `capabilities`/`health`) do not send traffic to the target and are not
+  routed through `GuardedAdapter`; findings they return are scope-checked at
+  import (`ingest_findings`).
 - `--mock` uses a deterministic in-memory backend for offline validation; it
   performs **no** real scanning.
 - The standard test suite never contacts a live ZAP, Burp, Caido, or external target.

@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from lib.logger import get_logger
-from lib.payload_guard import validate_payload
+from lib.payload_guard import validate_payload_tree
 from lib.redaction import redact_text
 from lib.scope_validator import validate_finding_scope
 
@@ -96,12 +96,12 @@ class McpGateway:
             if self.target_config is None or not validate_finding_scope(target, self.target_config):
                 return self._deny(actor, tool.name, "scope: target out of scope")
 
-        # SAFETY (payload guard over string arguments)
-        for value in args.values():
-            if isinstance(value, str):
-                allowed, reason = validate_payload(value)
-                if not allowed:
-                    return self._deny(actor, tool.name, f"safety: {reason}")
+        # SAFETY (recursive payload guard over ALL string arguments, including
+        # those nested inside object/list values — a top-level-only scan would
+        # let a payload hidden in a structured argument through)
+        allowed, reason = validate_payload_tree(args)
+        if not allowed:
+            return self._deny(actor, tool.name, f"safety: {reason}")
 
         # EXECUTION
         try:

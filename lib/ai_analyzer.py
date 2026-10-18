@@ -248,10 +248,18 @@ class AIAnalyzer:
             self.stats["successes"] += 1
             try:
                 content = resp.json()["choices"][0]["message"]["content"]
-                return True, self._parse_json(content), None
             except (KeyError, IndexError, json.JSONDecodeError, ValueError) as exc:
                 logger.warning("AI response parse error: %s", exc)
-                return True, None, None
+                # A malformed 200 must NOT be treated as success: that would end
+                # failover and hide healthy fallback providers behind one bad
+                # response. Classify as unknown so the bounded retry/failover
+                # policy applies and the next provider/key is tried.
+                return False, None, AIErrorClass.UNKNOWN
+            parsed = self._parse_json(content)
+            if parsed is None:
+                logger.warning("AI response content was not usable JSON")
+                return False, None, AIErrorClass.UNKNOWN
+            return True, parsed, None
 
         body_text = ""
         try:

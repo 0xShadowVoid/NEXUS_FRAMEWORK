@@ -21,6 +21,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from lib.logger import get_logger
+from lib.redaction import redact_text
 from lib.utils import utc_timestamp
 from core.sanitizer import sanitize_evidence_record
 
@@ -1024,7 +1025,7 @@ class Database:
         cur = self.execute(
             "INSERT INTO audit_events (ts, actor, action, category, detail)"
             " VALUES (?, ?, ?, ?, ?)",
-            (_now(), actor, action, category, detail[:300]),
+            (_now(), actor, action, category, redact_text(detail)[:300]),
         )
         return int(cur.lastrowid)
 

