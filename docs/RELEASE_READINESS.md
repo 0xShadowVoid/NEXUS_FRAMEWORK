@@ -4,6 +4,20 @@ Version under review: **2.0.1 ("Apex")**. This checklist is the sign-off gate fo
 a release. Fill in the commit/run identifiers at the point of release; every row
 must be **PASS** or explicitly **N/A with a reason**.
 
+## 0. Audit results (release candidate `aa5e22f`)
+
+| Gate | Result |
+|---|---|
+| Full suite + coverage | **PASS** — `1064 passed, 11 skipped`, **84%** (`lib`+`core`) |
+| Self-scan | **PASS** — 0 potential secrets |
+| Secret scan (staged) | **PASS** — 0 findings |
+| Secret scan (history) | **PASS** — 51 commits, 0 findings |
+| Diff hygiene | **PASS** — `git diff --check` clean |
+| Pre-commit hook syntax | **PASS** — `sh -n` exits 0 |
+| Documented-command validation | **PASS** — `--version`, `doctor` (exit 0), `mcp --mock`, `zap --mock` |
+| CI | **PASS** — run [`39155660782`](https://github.com/0xShadowVoid/NEXUS_FRAMEWORK/actions/runs/39155660782), all steps green |
+| `docker compose build` | **NOT RUN** — Docker daemon unavailable in the audit environment (environment limitation, not a repo defect) |
+
 ## 1. Version & metadata
 
 - [ ] `VERSION` is `2.0.1` and matches `pyproject.toml`, `README.md` and the Docker tag.
@@ -65,11 +79,17 @@ python -m nexus secretscan --history
 
 | Gate | Result | Evidence |
 |---|---|---|
-| Tests + coverage | | commit `____`, run `____` |
-| Self-scan | | |
-| Secret scans (staged + history) | | |
-| Diff hygiene | | |
-| CI | | workflow run `____` |
-| Docker build | | |
+| Tests + coverage | PASS | commit `aa5e22f`, `1064 passed, 11 skipped`, 84% |
+| Self-scan | PASS | 0 potential secrets |
+| Secret scans (staged + history) | PASS | 0 findings (51 commits) |
+| Diff hygiene | PASS | `git diff --check` clean |
+| CI | PASS | workflow run `39155660782` (all steps green) |
+| Docker build | NOT RUN | Docker daemon unavailable |
 
-**Verdict:** `READY` / `CONDITIONALLY READY` / `NOT READY` — `____`
+**Verdict:** `CONDITIONALLY READY` — the code, tests, security scans and CI all
+pass for `aa5e22f`. The single open condition is the **Docker image build**,
+which could not be executed here because the Docker daemon was not running;
+confirm it on a host/CI with Docker before publishing. All live optional
+integrations (ZAP/Burp/Caido/MCP/cloud/AI) remain `unverified` against live
+systems by design (see [SUPPORT_STATUS.md](SUPPORT_STATUS.md)).
+
