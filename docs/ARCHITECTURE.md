@@ -135,7 +135,7 @@ NEXUS_FRAMEWORK/
 ├─ nexus.py                  # CLI entrypoint (37 subcommands) + main()
 ├─ pyproject.toml            # packaging, deps, console script `nexus`
 ├─ requirements.txt          # runtime deps (mirror of pyproject)
-├─ VERSION                   # 2.0.1 ("Apex")
+├─ VERSION                   # 2.0.2 ("Apex")
 ├─ Dockerfile / docker-compose.yml
 ├─ config/                   # nexus.yaml, false_positive_filters.yaml (required),
 │                            # tools.yaml, methodologies.yaml, .keys.env.example

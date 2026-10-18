@@ -30,7 +30,7 @@ plus the bundled configuration (`config/`), NEMESIS skills (`skills/`), and repo
 ## Option B — from a built wheel
 
 ```powershell
-pip install dist/nexus_framework-2.0.1-py3-none-any.whl
+pip install dist/nexus_framework-2.0.2-py3-none-any.whl
 ```
 
 The wheel contains: `nexus.py`, the `lib/`, `core/`, `phases/` packages, and the data
@@ -49,7 +49,7 @@ added by the operator. Config, results, and logs are expected as bind mounts
 ## Verify the install
 
 ```powershell
-python -m nexus --version     # NEXUS 2.0.1 "Apex"
+python -m nexus --version     # NEXUS 2.0.2 "Apex"
 python -m nexus doctor        # environment, config, and tool diagnostics
 ```
 

@@ -1,16 +1,16 @@
 # NEXUS Operations Guide
 
 ## 1. Overview & Architecture
-NEXUS 2.0.1 ("Apex") is a modular bug bounty and security automation framework designed for offline-first, permission-gated vulnerability discovery, probing, analysis, hunting, control, and scaling.
+NEXUS 2.0.2 ("Apex") is a modular bug bounty and security automation framework designed for offline-first, permission-gated vulnerability discovery, probing, analysis, hunting, control, and scaling.
 
-This guide outlines operational deployment, configuration, secure execution, backup, and recovery procedures for NEXUS 2.0.1.
+This guide outlines operational deployment, configuration, secure execution, backup, and recovery procedures for NEXUS 2.0.2.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the component/data-flow diagram and repository layout, and [SUPPORT_STATUS.md](SUPPORT_STATUS.md) for what is verified/supported versus unverified.
 
 ---
 
 ## 2. Secure Installation Workflow
-To install NEXUS 2.0.1, follow these steps in an isolated Python 3.11+ environment. Install from a source checkout, or build a wheel first with `python -m build --wheel` and install the resulting `dist/nexus_framework-2.0.1-py3-none-any.whl`.
+To install NEXUS 2.0.2, follow these steps in an isolated Python 3.11+ environment. Install from a source checkout, or build a wheel first with `python -m build --wheel` and install the resulting `dist/nexus_framework-2.0.2-py3-none-any.whl`.
 
 ```powershell
 # 1. Create and activate a virtual environment

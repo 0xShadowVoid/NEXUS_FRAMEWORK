@@ -7,7 +7,7 @@ a scoped target in `config/nexus.yaml` ([CONFIGURATION.md](CONFIGURATION.md)).
 
 ```powershell
 pip install .
-python -m nexus --version        # NEXUS 2.0.1 "Apex"
+python -m nexus --version        # NEXUS 2.0.2 "Apex"
 python -m nexus doctor
 python -m nexus check-tools
 ```

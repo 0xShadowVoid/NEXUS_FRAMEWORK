@@ -1,7 +1,7 @@
 # CLI Reference
 
 Entry points: `python -m nexus <command>` (from the repository root) or the installed `nexus`
-script (from a pip install). Global flags: `--help`, `--version` (prints `NEXUS 2.0.1 "Apex"`).
+script (from a pip install). Global flags: `--help`, `--version` (prints `NEXUS 2.0.2 "Apex"`).
 
 Shared scan flags (accepted by `hunt`; several also by `batch`):
 

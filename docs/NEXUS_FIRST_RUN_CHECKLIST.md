@@ -1,6 +1,6 @@
 # NEXUS First-Run Checklist
 
-Follow this checklist to verify correct installation, configuration, and operation of NEXUS 2.0.1.
+Follow this checklist to verify correct installation, configuration, and operation of NEXUS 2.0.2.
 
 - [ ] **1. Environment Verification**
   - Python 3.11+ installed (`python --version`).

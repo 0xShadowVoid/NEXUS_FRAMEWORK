@@ -1,6 +1,6 @@
 # Getting Started
 
-A step-by-step first run. All commands are tested against the repository at version 2.0.1.
+A step-by-step first run. All commands are tested against the repository at version 2.0.2.
 
 ## 0. What you need
 
@@ -27,7 +27,7 @@ Full details (wheel install, offline machines): [INSTALLATION.md](INSTALLATION.m
 ## 2. Verify
 
 ```powershell
-python -m nexus --version      # -> NEXUS 2.0.1 "Apex"
+python -m nexus --version      # -> NEXUS 2.0.2 "Apex"
 python -m nexus --help         # list of all 37 commands
 python -m nexus doctor         # environment/config diagnostics
 python -m nexus check-tools    # which optional external tools are installed

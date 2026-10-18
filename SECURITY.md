@@ -4,7 +4,7 @@
 
 | Version | Supported |
 |---|---|
-| 2.0.1 (Apex) | ✅ |
+| 2.0.2 (Apex) | ✅ |
 
 ## Responsible Disclosure
 

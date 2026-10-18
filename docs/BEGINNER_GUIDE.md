@@ -237,4 +237,4 @@ That's 90% of daily use. Everything else is in `docs/EXAMPLES.md`
 4. If unsure whether something's in scope: **don't scan it.**
 5. `.keys.env` never gets committed, never gets shared, never goes in screenshots.
 
-*Guide version: for NEXUS 2.0.1 "Apex". Update this file when you learn something future-you will forget.*
+*Guide version: for NEXUS 2.0.2 "Apex". Update this file when you learn something future-you will forget.*

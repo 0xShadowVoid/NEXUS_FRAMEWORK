@@ -100,7 +100,7 @@ automated test → `unverified`).
 
 | Item | Status | Notes |
 |---|---|---|
-| `Dockerfile` / `docker-compose.yml` (tag `2.0.1`) | supported | `docker compose config` validates; `docker compose build` + in-container `doctor` smoke test pass locally (Docker Engine 29.7.2, linux/amd64, 281 MB) and in the CI `docker` job. The image installs runtime deps only (`pip install .`) and bakes no secrets. |
+| `Dockerfile` / `docker-compose.yml` (tag `2.0.2`) | supported | `docker compose config` validates; `docker compose build` + in-container `doctor` smoke test pass locally (Docker Engine 29.7.2, linux/amd64, 281 MB) and in the CI `docker` job. The image installs runtime deps only (`pip install .`) and bakes no secrets. |
 | Console script (`nexus`) + `pip install .` | supported | the Docker image is built with `pip install .`; also covered by clean-venv install checks |
 
 ## Known residual limitations (cross-reference)

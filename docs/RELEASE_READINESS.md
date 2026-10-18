@@ -1,6 +1,6 @@
 # Release Readiness Checklist
 
-Version under review: **2.0.1 ("Apex")**. This checklist is the sign-off gate for
+Version under review: **2.0.2 ("Apex")**. This checklist is the sign-off gate for
 a release. Fill in the commit/run identifiers at the point of release; every row
 must be **PASS** or explicitly **N/A with a reason**.
 
@@ -11,19 +11,19 @@ must be **PASS** or explicitly **N/A with a reason**.
 | Full suite + coverage | **PASS** — `1064 passed, 11 skipped`, **84%** (`lib`+`core`) |
 | Self-scan | **PASS** — 0 potential secrets |
 | Secret scan (staged) | **PASS** — 0 findings |
-| Secret scan (history) | **PASS** — 51 commits, 0 findings |
+| Secret scan (history) | **PASS** — full history (all refs), 0 findings |
 | Diff hygiene | **PASS** — `git diff --check` clean |
 | Pre-commit hook syntax | **PASS** — `sh -n` exits 0 |
 | Documented-command validation | **PASS** — `--version`, `doctor` (exit 0), `mcp --mock`, `zap --mock` |
-| `docker compose config` | **PASS** — validates; image tag `nexus-framework:2.0.1` |
+| `docker compose config` | **PASS** — validates; image tag `nexus-framework:2.0.2` |
 | `docker compose build` | **PASS** — image built (Docker Engine 29.7.2, linux/amd64; 281 MB) |
 | Container smoke test | **PASS** — `doctor` exits 0 inside the container (13 checks) |
 | CI | **PASS** — `test` + `docker` jobs green (see §7) |
 
 ## 1. Version & metadata
 
-- [ ] `VERSION` is `2.0.1` and matches `pyproject.toml`, `README.md` and the Docker tag.
-- [ ] No version bump is introduced incidentally by this release.
+- [ ] `VERSION` is `2.0.2` and matches `pyproject.toml`, `lib/version.py`, `README.md` and the Docker tag.
+- [ ] The `2.0.1` → `2.0.2` bump is the intentional metadata change for this patch release (no other version drift).
 - [ ] `LICENSE` and `SECURITY.md` (disclosure policy) are present.
 
 ## 2. Automated tests & coverage
@@ -34,7 +34,7 @@ Command:
 python -m pytest tests -q --cov=lib --cov=core --cov-report=term-missing
 ```
 
-- [ ] Full suite passes (expected: **1060 passed, 11 skipped**).
+- [ ] Full suite passes (expected: **1064 passed, 11 skipped**).
 - [ ] Coverage meets the CI threshold (reported **84%**).
 - [ ] A clean-venv install (`pip install .`) passes the same suite.
 
@@ -59,7 +59,7 @@ python -m nexus secretscan --history
 
 ## 5. Documented-command validation
 
-- [ ] `python -m nexus --version` prints `NEXUS 2.0.1`.
+- [ ] `python -m nexus --version` prints `NEXUS 2.0.2`.
 - [ ] `python -m nexus doctor` exits 0.
 - [ ] `python -m nexus hunt --help` and every documented subcommand resolves.
 - [ ] `nexus mcp --mock --tools` and `nexus zap --mock --capabilities` run offline.
@@ -85,7 +85,7 @@ python -m nexus secretscan --history
 |---|---|---|
 | Tests + coverage | PASS | `1064 passed, 11 skipped`, 84% |
 | Self-scan | PASS | 0 potential secrets |
-| Secret scans (staged + history) | PASS | 0 findings (51 commits) |
+| Secret scans (staged + history) | PASS | 0 findings (full history) |
 | Diff hygiene | PASS | `git diff --check` clean |
 | Docker build + smoke test | PASS | local build (Engine 29.7.2, linux) + `docker` CI job |
 | CI | PASS | `test` + `docker` jobs green |
@@ -95,4 +95,17 @@ all pass. Live optional integrations (ZAP/Burp/Caido/MCP/cloud/AI) remain
 `unverified` against live systems by design (see
 [SUPPORT_STATUS.md](SUPPORT_STATUS.md)); this is a documented, non-blocking
 limitation, not a defect.
+
+## 8. Change history
+
+- **2.0.2** (`2a0313e` + version bump) — patch release on top of 2.0.1:
+  - Fix: Burp active scan honors `--authorize-active` (was hard-coded authorized).
+  - Fix: `mcp --tools` returns a non-zero exit code on connect failure.
+  - Fix: `ingest_findings` fails closed when scope context is missing.
+  - Fix: `SCHEMA_VERSION` is derived from `core.migrations.TARGET` (was stale).
+  - Docker: runtime-only install (`pip install .`), artifact-free build context,
+    and a CI `docker` job (build + smoke test + hygiene asserts).
+  - Docs: corrected adapter/AI/CLI/config docs; added ARCHITECTURE,
+    SUPPORT_STATUS and RELEASE_READINESS.
+- **2.0.1** — security-hardening (Pass 9) release.
 

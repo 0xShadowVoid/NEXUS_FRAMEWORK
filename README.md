@@ -104,7 +104,7 @@ The `dist/` directory is not committed, so build the wheel first:
 ```bash
 python -m pip install build
 python -m build --wheel
-pip install dist/nexus_framework-2.0.1-py3-none-any.whl
+pip install dist/nexus_framework-2.0.2-py3-none-any.whl
 ```
 
 (The filename reflects the version in `VERSION`; adjust if you build a different version.)
@@ -113,7 +113,7 @@ pip install dist/nexus_framework-2.0.1-py3-none-any.whl
 
 ```powershell
 # 1. Confirm the install
-python -m nexus --version        # -> NEXUS 2.0.1 "Apex"
+python -m nexus --version        # -> NEXUS 2.0.2 "Apex"
 python -m nexus --help
 
 # 2. (Optional) create your secrets file — never commit it
