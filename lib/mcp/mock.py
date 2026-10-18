@@ -66,7 +66,8 @@ class FakeMcpServer:
     ):
         self.tools = tools if tools is not None else [default_tool()]
         self.results = dict(results or {})
-        # "" | "connect" | "auth" | "malformed" | "error" | "oversized" | "tool_error" | "timeout"
+        # "" | "connect" | "auth" | "malformed" | "error" | "oversized" | "tool_error"
+        # | "timeout" | "list_error" | "cursor_loop"
         self.fail = fail
         self.protocol_version = protocol_version
         self.server_name = server_name
@@ -105,7 +106,13 @@ class FakeMcpServer:
             return None
 
         if method == M_TOOLS_LIST:
-            return self._ok(msg_id, {"tools": [dict(tool) for tool in self.tools]})
+            if self.fail == "list_error":
+                return self._err(msg_id, -32603, "tools/list failed")
+            listing = [dict(tool) for tool in self.tools]
+            result: dict[str, Any] = {"tools": listing}
+            if self.fail == "cursor_loop":
+                result["nextCursor"] = "more"
+            return self._ok(msg_id, result)
 
         if method == M_TOOLS_CALL:
             if self.fail == "timeout":

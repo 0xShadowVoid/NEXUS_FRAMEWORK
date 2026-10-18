@@ -28,6 +28,7 @@ applied back to configuration.
 """
 from __future__ import annotations
 
+import json
 import os
 import threading
 from dataclasses import dataclass, field
@@ -54,6 +55,30 @@ from lib.version import framework_version
 logger = get_logger("mcp.gateway")
 
 SUPPORTED_TRANSPORTS = ("stdio", "streamable-http", "mock")
+
+
+def _arguments_size(arguments: dict[str, Any]) -> int:
+    """Serialized size of *arguments* in bytes (-1 when not JSON-serializable)."""
+    try:
+        return len(json.dumps(arguments, default=str, separators=(",", ":")).encode("utf-8"))
+    except (TypeError, ValueError):
+        return -1
+
+
+def _iter_url_args(value: Any, key: str = ""):
+    """Yield ``(key, url)`` for every http(s) string anywhere in *arguments*.
+
+    Recurses into nested objects/lists so a URL hidden inside a structured
+    argument still passes the SSRF guard.
+    """
+    if isinstance(value, dict):
+        for k, v in value.items():
+            yield from _iter_url_args(v, str(k))
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _iter_url_args(item, key)
+    elif isinstance(value, str) and value.startswith(("http://", "https://")):
+        yield key, value
 
 
 @dataclass
@@ -144,7 +169,12 @@ class GuardedMcpServer:
 
     def _deny(self, tool: str, reason: str) -> dict[str, Any]:
         self._audit("denied", f"{tool}: {reason}")
-        return {"status": "denied", "tool": tool, "server": self.policy.name, "reason": reason}
+        return {
+            "status": "denied",
+            "tool": tool,
+            "server": self.policy.name,
+            "reason": redact_text(reason),
+        }
 
     # -- connection / discovery --------------------------------------------
 
@@ -196,8 +226,16 @@ class GuardedMcpServer:
             self.client.connect()
             tools = self.client.list_tools()
         except McpError as exc:
-            self.status_error = redact_text(str(exc))
+            # Release a partially-open session so a failed discovery never
+            # leaks a subprocess/socket (connect may have succeeded before the
+            # tools/list failure).
+            if self.client is not None:
+                try:
+                    self.client.close()
+                except Exception:
+                    pass
             self.connected = False
+            self.status_error = redact_text(str(exc))
             self._audit("connect_error", self.status_error)
             return self.status()
 
@@ -298,17 +336,25 @@ class GuardedMcpServer:
         if issues:
             return self._deny(spec.name, "schema: " + "; ".join(issues))
 
+        size = _arguments_size(args)
+        if size < 0:
+            return self._deny(spec.name, "arguments are not JSON-serializable")
+        if size > self.policy.max_result_bytes:
+            return self._deny(
+                spec.name,
+                f"arguments exceed size limit ({size} > {self.policy.max_result_bytes} bytes)",
+            )
+
         if spec.is_active() and not (self.policy.allow_active and authorize_active):
             return self._deny(
                 spec.name,
                 "active tool requires allow_active in policy and explicit per-call authorization",
             )
 
-        for key, value in args.items():
-            if isinstance(value, str) and value.startswith(("http://", "https://")):
-                safe, reason = is_safe_url(value, allow=self.policy.ssrf_allow, local_ok=False)
-                if not safe:
-                    return self._deny(spec.name, f"ssrf: argument {key!r} blocked: {reason}")
+        for key, value in _iter_url_args(args):
+            safe, reason = is_safe_url(value, allow=self.policy.ssrf_allow, local_ok=False)
+            if not safe:
+                return self._deny(spec.name, f"ssrf: argument {key!r} blocked: {reason}")
 
         # Auth/authz/scope/payload/execution/audit are enforced by McpGateway.
         return self.gateway.call(spec.name, args, actor)

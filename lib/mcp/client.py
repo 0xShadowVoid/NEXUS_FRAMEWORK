@@ -195,6 +195,11 @@ class McpClient:
         import time as _time
 
         params = {"name": name, "arguments": dict(arguments or {})}
+        arg_size = len(json.dumps(params, default=str, separators=(",", ":")).encode("utf-8"))
+        if arg_size > self.max_result_bytes:
+            raise McpProtocolError(
+                f"tool arguments exceed size limit ({arg_size} > {self.max_result_bytes} bytes)"
+            )
         start = _time.monotonic()
         response = self.transport.request(
             encode_request(next_id(), M_TOOLS_CALL, params),

@@ -135,13 +135,19 @@ and `--tools` never execute a tool.
   in policy **and** a per-call `--authorize-active`.
 - **Scope** — a tool mapped in `scope_tools` has its target argument checked
   against the engagement scope; with no scope configured it fails closed.
-- **SSRF** — remote endpoints and URL arguments pass the SSRF guard; redirects
-  are refused; cloud-metadata hosts/paths are always blocked.
-- **Bounds** — per-message and per-result byte caps; retained text is capped.
+- **SSRF** — remote endpoints and URL arguments pass the SSRF guard, including
+  URLs nested inside structured (object/list) arguments; redirects are refused;
+  cloud-metadata hosts/paths are always blocked.
+- **Bounds** — per-message, per-result and per-argument byte caps; retained text
+  is capped, so an oversized or malformed request/result is rejected rather than
+  forwarded.
 - **Redaction** — results, errors and audit details are scrubbed of secrets
-  before they reach logs, reports or evidence.
+  before they reach logs, reports, evidence or the database.
 - **No shell** — stdio servers launch via an argv list with `shell=False`, and
   the command is screened by the payload guard.
+- **Lifecycle** — a failed connect/discovery closes the partially-open session
+  (no leaked subprocess or socket), `discovery` is paged with a hard cap, and
+  every call after `close()` is denied.
 
 ## Audit
 

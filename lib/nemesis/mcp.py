@@ -15,6 +15,7 @@ from typing import Any, Callable
 
 from lib.logger import get_logger
 from lib.payload_guard import validate_payload
+from lib.redaction import redact_text
 from lib.scope_validator import validate_finding_scope
 
 logger = get_logger("nemesis.mcp")
@@ -55,14 +56,14 @@ class McpGateway:
         try:
             self.db.insert_audit_event(
                 actor=str(actor or ""), action=f"mcp.{name}",
-                category="mcp", detail=f"{status} {detail}".strip()[:300],
+                category="mcp", detail=redact_text(f"{status} {detail}").strip()[:300],
             )
         except Exception:  # audit must never break execution
             pass
 
     def _deny(self, actor: str, name: str, reason: str) -> dict[str, Any]:
         self._audit(actor, name, "denied", reason)
-        return {"status": "denied", "tool": name, "reason": reason}
+        return {"status": "denied", "tool": name, "reason": redact_text(reason)}
 
     # -- entrypoint -----------------------------------------------------------------
 
@@ -106,8 +107,9 @@ class McpGateway:
         try:
             result = tool.handler(dict(args))
         except Exception as exc:
-            self._audit(actor, tool.name, "error", str(exc))
-            return {"status": "error", "tool": tool.name, "error": str(exc)}
+            message = redact_text(str(exc))
+            self._audit(actor, tool.name, "error", message)
+            return {"status": "error", "tool": tool.name, "error": message}
 
         # EVIDENCE hook: handlers may return {"evidence_id": ...}; we link it
         # to nothing by default (no fabrication) — the caller decides.
