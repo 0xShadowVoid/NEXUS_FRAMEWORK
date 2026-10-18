@@ -15,7 +15,7 @@ Installed automatically via `pip install`:
 
 ## 2. Optional Extra Dependencies
 - **`[project.optional-dependencies]` (c2):** `discord.py >= 2.3`, `python-telegram-bot >= 20` (C2 control bots).
-- **`[project.optional-dependencies]` (dev):** `pytest >= 8.0` (Test suite execution).
+- **`[project.optional-dependencies]` (dev):** `pytest >= 8.0`, `pytest-cov >= 4.0` (coverage gate), `httpx2 >= 2.0` (FastAPI/Starlette `TestClient` transport for the GUI tests).
 
 ---
 

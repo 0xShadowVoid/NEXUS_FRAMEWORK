@@ -36,9 +36,13 @@ BUGCROWD_BASE = "https://api.bugcrowd.com/programs"
 _SSRF_ALLOW = {"api.hackerone.com", "api.bugcrowd.com"}
 
 # Default environment variable *names* per platform (never values).
+# These MUST stay in sync with the names collected by ``lib.config``
+# (``KNOWN_ENV_KEYS``) and listed in ``config/.keys.env.example``; otherwise
+# the default (no ``username_env``/``token_env`` override) silently resolves
+# to empty credentials and every sync is skipped.
 DEFAULT_CRED_ENV = {
-    "hackerone": {"username": "H1_API_USER", "token": "H1_API_TOKEN"},
-    "bugcrowd": {"token": "BUGCROWD_API_TOKEN"},
+    "hackerone": {"username": "HACKERONE_API_USERNAME", "token": "HACKERONE_API_TOKEN"},
+    "bugcrowd": {"token": "BUGCROWD_API_KEY"},
 }
 
 

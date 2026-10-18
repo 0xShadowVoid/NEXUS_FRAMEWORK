@@ -54,9 +54,13 @@ def run_doctor(root: Path | None = None, cfg: Config | None = None) -> dict[str,
         report = validate_keys(loaded)
         add("config:keys", True,
             f"{len(report['missing'])} unset (graceful), {len(report['invalid'])} invalid")
-        add("config:keys.env", bool((CONFIG_DIR / ".keys.env").exists()),
-            ".keys.env present" if (CONFIG_DIR / ".keys.env").exists()
-            else "not created yet (copy from .keys.env.example)")
+        # .keys.env is genuinely optional (the framework runs offline without
+        # it), so its absence is informational — it must not fail the run.
+        keys_path = CONFIG_DIR / ".keys.env"
+        add("config:keys.env", True,
+            ".keys.env present" if keys_path.exists()
+            else "not created yet (optional; copy from .keys.env.example when you "
+                 "need alerts/AI)")
     except ConfigError as exc:
         loaded = None
         add("config:nexus.yaml", False, str(exc))

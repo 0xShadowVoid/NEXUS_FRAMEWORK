@@ -23,4 +23,4 @@ Follow this checklist to verify correct installation, configuration, and operati
     ```powershell
     python -m pytest tests -q -p no:cacheprovider
     ```
-    *(Expected outcome: 483 passed, 11 skipped, 0 failed).*
+    *(Expected outcome: 1060 passed, 11 skipped, 0 failed).*

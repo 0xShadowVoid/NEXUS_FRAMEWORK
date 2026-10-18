@@ -67,6 +67,24 @@ def test_doctor_fails_without_config(tmp_path: Path):
     assert any(c["check"] == "config:nexus.yaml" for c in report["checks"])
 
 
+def test_doctor_missing_keys_env_is_not_a_failure(tmp_path: Path, monkeypatch):
+    """Regression: the optional .keys.env must not fail doctor.
+
+    NEXUS runs offline without secrets, so a missing .keys.env previously
+    flipped the overall result to ok=False (and process exit 1) on a fresh,
+    otherwise valid install.
+    """
+    import lib.doctor as doctor
+
+    (tmp_path / "nexus.yaml").write_text("targets: {}\n", encoding="utf-8")
+    (tmp_path / "false_positive_filters.yaml").write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(doctor, "CONFIG_DIR", tmp_path)
+    report = doctor.run_doctor()
+    keys_check = next(c for c in report["checks"] if c["check"] == "config:keys.env")
+    assert keys_check["ok"] is True
+    assert "not created yet" in keys_check["detail"]
+
+
 # --- delta ----------------------------------------------------------------
 
 

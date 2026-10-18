@@ -62,8 +62,8 @@ targets:
   #   sync:
   #     platform: hackerone        # hackerone | bugcrowd
   #     handle: acme               # program handle/slug on the platform
-  #     username_env: H1_API_USER  # hackerone only
-  #     token_env: H1_API_TOKEN    # api-token env var NAME
+  #     username_env: HACKERONE_API_USERNAME   # hackerone only (default)
+  #     token_env: HACKERONE_API_TOKEN         # api-token env var NAME (default)
 
 # Scope-drift alerts (roadmap E3): when a scope auto-sync changes a target's
 # scope, notify through the channels below. Off by default; enable globally

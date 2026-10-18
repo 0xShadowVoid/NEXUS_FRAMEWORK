@@ -22,7 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 c2 = ["discord.py>=2.3", "python-telegram-bot>=20"]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "pytest-cov>=4.0", "httpx2>=2.0"]
 
 [project.scripts]
 nexus = "nexus:main"

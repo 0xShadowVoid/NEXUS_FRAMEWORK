@@ -163,7 +163,7 @@ All runtime configuration lives in `config/`:
 | `config/.keys.env` | secrets (AI keys, webhooks, API tokens) | **no — git-ignored** |
 
 Create `config/.keys.env` from `config/.keys.env.example` and fill in only what you need. `${VAR}`
-placeholders in `nexus.yaml` resolve from `.keys.env` first, then the OS environment; missing
+placeholders in `nexus.yaml` resolve from the OS environment first, then `.keys.env`; missing
 values resolve to empty string so the framework runs offline. `nexus.yaml` and
 `false_positive_filters.yaml` are required — a missing or malformed file fails startup with a
 clear error.

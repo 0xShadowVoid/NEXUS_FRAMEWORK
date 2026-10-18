@@ -26,7 +26,7 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 | `--resume SCAN_ID` | resume a previous scan |
 | `--cve ID` | include a specific CVE in context |
 
-## Commands (33)
+## Commands (37)
 
 ### Scanning
 - `hunt TARGET` — scan a single target (accepts the shared scan flags above).

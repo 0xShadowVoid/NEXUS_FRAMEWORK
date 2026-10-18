@@ -3,9 +3,14 @@
 All runtime configuration lives in `config/nexus.yaml` (committed defaults) and
 `config/.keys.env` (your secrets, git-ignored, created from `config/.keys.env.example`).
 
-`${VAR}` placeholders inside `nexus.yaml` resolve from `config/.keys.env` first, then from the
-OS environment. Missing variables resolve to the empty string so the framework degrades
-gracefully offline.
+Two files are **required** and are committed with the repository:
+`config/nexus.yaml` and `config/false_positive_filters.yaml`. `load_config()` raises
+`ConfigError` if either is missing (or contains malformed YAML); only `config/.keys.env`
+is optional.
+
+`${VAR}` placeholders inside `nexus.yaml` resolve from the OS environment first, then from
+`config/.keys.env` (which only fills in variables the OS environment does not already define).
+Missing variables resolve to the empty string so the framework degrades gracefully offline.
 
 ## `scanning:`
 
@@ -71,9 +76,16 @@ targets:
     sync:
       platform: hackerone        # hackerone | bugcrowd
       handle: acme               # program handle/slug on the platform
-      username_env: H1_API_USER  # hackerone only (HTTP basic auth)
-      token_env: H1_API_TOKEN    # name of the env var holding the API token
+      username_env: HACKERONE_API_USERNAME  # hackerone only (HTTP basic auth)
+      token_env: HACKERONE_API_TOKEN        # name of the env var holding the API token
 ```
+
+`username_env`/`token_env` are optional per target; when omitted they default to
+the names in `config/.keys.env.example` — `HACKERONE_API_USERNAME` /
+`HACKERONE_API_TOKEN` for HackerOne and `BUGCROWD_API_KEY` for Bugcrowd. Set the
+matching values in `config/.keys.env` (or the OS environment) for the sync to
+authenticate; a missing/empty credential is reported as `skipped`, never as an
+empty scope.
 
 `scope-sync` writes `in_scope`/`out_of_scope` back into this file (keeping a
 `.bak`) **only when the scope changed**, and records the drift. Out-of-scope
@@ -278,7 +290,6 @@ Framework variables (set in the OS environment, never in files):
 | Variable | Meaning |
 |---|---|
 | `NEXUS_GUI_USER` / `NEXUS_GUI_PASS` | Local GUI administrator credentials. If unset the GUI **fails closed** (HTTP 503). Scan targets submitted through the GUI are authorized against the configured `targets:` scope; a target not covered by any configured `in_scope` is rejected (HTTP 403). |
-| `NEXUS_VERSION` | Read-only override used by some test harnesses; normally derived from `VERSION`. |
 | *(MCP bearer token)* | Each `mcp.servers[].auth_token_env` names an env var (e.g. `MCP_REMOTE_TOKEN`) holding a Streamable-HTTP bearer token. Set in `config/.keys.env` or the OS environment; the value is never written to `nexus.yaml` and is never logged. |
 
 ## Startup failures

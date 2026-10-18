@@ -1,7 +1,7 @@
 services:
   nexus:
     build: .
-    image: nexus-framework:1.1.0
+    image: nexus-framework:2.0.1
     volumes:
       - ./config:/nexus/config          # .keys.env + nexus.yaml live here
       - ./results:/nexus/results

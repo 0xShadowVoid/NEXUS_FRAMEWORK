@@ -3,9 +3,10 @@
 Loads ``config/nexus.yaml``, ``config/false_positive_filters.yaml`` and
 ``config/.keys.env`` (via python-dotenv, falling back to the process
 environment). ``${VAR}`` references inside nexus.yaml are substituted
-from .keys.env first, then OS environment. Missing variables resolve to
-the empty string so the framework degrades gracefully offline; use
-:func:`validate_keys` when strict validation is required.
+from the OS environment first, then ``.keys.env`` (which only fills in
+variables the OS environment does not already define). Missing variables
+resolve to the empty string so the framework degrades gracefully offline;
+use :func:`validate_keys` when strict validation is required.
 """
 from __future__ import annotations
 

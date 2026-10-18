@@ -191,6 +191,31 @@ def test_fetch_program_unknown_platform():
         fetch_program("shady", "acme", env={}, session=FakeSession(FakeResponse()))
 
 
+def test_default_sync_credential_names_are_collected(tmp_path, monkeypatch):
+    """Regression: default sync creds must be names ``Config.env`` reads.
+
+    The defaults were previously ``H1_API_USER``/``H1_API_TOKEN``/
+    ``BUGCROWD_API_TOKEN``, which ``lib.config`` never collects into
+    ``Config.env``; a target using the shipped example (no ``username_env``/
+    ``token_env`` override) therefore resolved to empty credentials and every
+    sync was silently *skipped*.
+    """
+    from lib.config import load_config
+    from lib.scope_providers import DEFAULT_CRED_ENV
+
+    (tmp_path / "nexus.yaml").write_text("targets: {}\n", encoding="utf-8")
+    (tmp_path / "false_positive_filters.yaml").write_text("{}\n", encoding="utf-8")
+
+    expected = {"HACKERONE_API_USERNAME", "HACKERONE_API_TOKEN", "BUGCROWD_API_KEY"}
+    assert {n for names in DEFAULT_CRED_ENV.values() for n in names.values()} == expected
+
+    for name in expected:
+        monkeypatch.setenv(name, "sentinel-value")
+    cfg = load_config(tmp_path)
+    for name in expected:
+        assert cfg.env.get(name) == "sentinel-value"
+
+
 # --- diff / normalize -----------------------------------------------------
 
 
@@ -224,7 +249,7 @@ def test_read_config_target_scope(tmp_path):
 def test_sync_program_applies_on_change(tmp_path):
     path = _write_cfg(tmp_path, {})
     session = FakeSession(FakeResponse(payload=_h1_jsonapi_scopes()))
-    report = sync_program("acme.com", platform="hackerone", handle="acme", env={"H1_API_USER": "u", "H1_API_TOKEN": "t"},
+    report = sync_program("acme.com", platform="hackerone", handle="acme", env={"HACKERONE_API_USERNAME": "u", "HACKERONE_API_TOKEN": "t"},
                           session=session, config_path=path)
     assert report["applied"] is True and report["changed"] is True
     assert report["in_scope"] == ["acme.com", "api.acme.com"]
@@ -240,7 +265,7 @@ def test_sync_program_no_write_when_unchanged(tmp_path):
     before = path.read_text(encoding="utf-8")
     session = FakeSession(FakeResponse(payload=_h1_jsonapi_scopes()))
     report = sync_program("acme.com", platform="hackerone", handle="acme",
-                          env={"H1_API_USER": "u", "H1_API_TOKEN": "t"}, session=session, config_path=path)
+                          env={"HACKERONE_API_USERNAME": "u", "HACKERONE_API_TOKEN": "t"}, session=session, config_path=path)
     assert report["changed"] is False and report["applied"] is False
     assert path.read_text(encoding="utf-8") == before
     assert not (tmp_path / "nexus.yaml.bak").exists()
@@ -251,7 +276,7 @@ def test_sync_program_dry_run_does_not_write(tmp_path):
     before = path.read_text(encoding="utf-8")
     session = FakeSession(FakeResponse(payload=_h1_jsonapi_scopes()))
     report = sync_program("acme.com", platform="hackerone", handle="acme",
-                          env={"H1_API_USER": "u", "H1_API_TOKEN": "t"}, session=session,
+                          env={"HACKERONE_API_USERNAME": "u", "HACKERONE_API_TOKEN": "t"}, session=session,
                           config_path=path, apply=False)
     assert report["changed"] is True and report["applied"] is False
     assert path.read_text(encoding="utf-8") == before
@@ -272,7 +297,7 @@ def test_sync_program_reports_removed_scope(tmp_path):
         "in_scope": ["acme.com", "api.acme.com", "gone.acme.com"], "out_of_scope": []}})
     session = FakeSession(FakeResponse(payload=_h1_jsonapi_scopes()))
     report = sync_program("acme.com", platform="hackerone", handle="acme",
-                          env={"H1_API_USER": "u", "H1_API_TOKEN": "t"}, session=session, config_path=path)
+                          env={"HACKERONE_API_USERNAME": "u", "HACKERONE_API_TOKEN": "t"}, session=session, config_path=path)
     assert report["drift"]["removed_in_scope"] == ["gone.acme.com"]
     assert report["applied"] is True
 
@@ -283,7 +308,7 @@ def test_sync_program_reports_removed_scope(tmp_path):
 def test_sync_targets_reports_summary(tmp_path):
     path = _write_cfg(tmp_path, {"acme.com": {"sync": {"platform": "bugcrowd", "handle": "acme"}}})
     cfg = FakeCfg({"acme.com": {"sync": {"platform": "bugcrowd", "handle": "acme"}}},
-                  env={"BUGCROWD_API_TOKEN": "tok"})
+                  env={"BUGCROWD_API_KEY": "tok"})
     payload = {"data": {"name": "Acme", "targets": {"in_scope": [{"target": "acme.com"}], "out_of_scope": []}}}
     result = sync_targets(["acme.com"], config=cfg, config_path=path,
                           session=FakeSession(FakeResponse(payload=payload)))
@@ -304,7 +329,7 @@ def test_sync_targets_skips_unconfigured_and_errors(tmp_path):
 def test_sync_targets_reports_no_secret(tmp_path):
     path = _write_cfg(tmp_path, {"acme.com": {"sync": {"platform": "hackerone"}}})
     cfg = FakeCfg({"acme.com": {"sync": {"platform": "hackerone"}}},
-                  env={"H1_API_USER": "u", "H1_API_TOKEN": "top-secret-token"})
+                  env={"HACKERONE_API_USERNAME": "u", "HACKERONE_API_TOKEN": "top-secret-token"})
     result = sync_targets(["acme.com"], config=cfg, config_path=path,
                           session=FakeSession(exc=requests.ConnectionError("x")))
     assert "top-secret-token" not in json.dumps(result)

@@ -28,7 +28,7 @@ Full details (wheel install, offline machines): [INSTALLATION.md](INSTALLATION.m
 
 ```powershell
 python -m nexus --version      # -> NEXUS 2.0.1 "Apex"
-python -m nexus --help         # list of all 27 commands
+python -m nexus --help         # list of all 37 commands
 python -m nexus doctor         # environment/config diagnostics
 python -m nexus check-tools    # which optional external tools are installed
 ```
