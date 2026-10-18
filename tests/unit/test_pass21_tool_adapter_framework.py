@@ -211,6 +211,22 @@ def test_ingest_sanitizes_untrusted_evidence(cfg, db):
     assert result["evidence_ids"]
 
 
+def test_ingest_findings_fails_closed_without_scope_context(cfg, db):
+    """Regression: with no scope context, findings must NOT be marked in-scope.
+
+    The read-only import paths can pass ``target_config=None`` (e.g. no
+    ``--domain``); the documented guarantee is that imported findings are
+    scope-checked, so missing context fails closed.
+    """
+    scan_id = _scan(db)
+    finding = RawFinding(adapter="fake", source="fake", name="SQLi", severity="P1",
+                         confidence=90, endpoint="https://example.com/a?q=1")
+    result = ingest_findings(db, scan_id, [finding], None, phase="fake")
+    assert result["out_of_scope"] == 1
+    rows = db.query_findings(scan_id=scan_id)
+    assert rows[0]["in_scope"] == 0
+
+
 def test_build_adapter_evidence_schema():
     finding = RawFinding(adapter="zap", source="zap", name="CSP", plugin_id="10038",
                          alert_id="1", cwe_id="693", endpoint="http://x/")

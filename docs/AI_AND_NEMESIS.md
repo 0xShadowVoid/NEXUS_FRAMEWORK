@@ -17,13 +17,17 @@ Configured in `config/nexus.yaml` (`ai:`) with keys in `config/.keys.env`:
 | `openrouter` | `OPENROUTER_API_KEY` | OpenAI-compatible HTTP | yes | yes |
 | `custom` | `CUSTOM_API_KEY` + `CUSTOM_BASE_URL` | OpenAI-compatible HTTP | yes | no |
 | `ollama` | — | OpenAI-compatible HTTP (local) | n/a | no |
-| `opencode` | — | local CLI | — | — |
-| `cline` | — | IDE extension | — | — |
+| `opencode` | — | local CLI (unsupported) | — | — |
+| `cline` | — | IDE extension (unsupported) | — | — |
 
 **Verified support.** Only the OpenAI-compatible HTTP providers ship a working adapter
 (`lib/ai_analyzer.py`). `opencode` and `cline` are listed for completeness but have **no
-verified programmatic integration** — see "OpenCode and Cline" below. Configure them and NEXUS
-**rejects the configuration at startup** rather than pretending to work. Run
+verified programmatic integration** — see "OpenCode and Cline" below. They are rejected with a
+clear error wherever NEXUS validates a provider: **per-agent** configuration
+(`nemesis.agents.<name>.provider` / `.fallback`) is checked at startup and refuses them. The
+top-level `ai.provider` / `ai.fallback_providers` keys are **not** validated the same way — an
+unsupported or unknown name there is simply treated as unusable (no keys ⇒ AI disabled), so
+prefer per-agent configuration when you want a hard error. Run
 `python -m nexus ai-providers` to see the current capability matrix.
 
 ### Multiple keys & rotation
@@ -58,9 +62,9 @@ restriction:
 | permission | 403 (no quota hint) | skip provider (no retry) |
 
 `ai.max_retries` bounds same-provider retries; backoff is exponential (capped at 8s). Each
-decision records the provider, model, error category and fallback outcome — **never** the
-credential or prompt. When every provider fails, the call returns `None` and the deterministic
-NEXUS workflow continues untouched.
+decision records the provider, error category and fallback outcome — **never** the credential or
+prompt (the model id is used for routing but is not written to the decision log). When every
+provider fails, the call returns `None` and the deterministic NEXUS workflow continues untouched.
 
 ### Per-agent model & effort (`nemesis.agents`)
 
@@ -72,11 +76,13 @@ ordered fallback chain. Configuration is validated at startup; unsupported model
 
 ### Local models (offline)
 
-`ollama` (native API) and any OpenAI-compatible local server reachable through `custom`
-(llama.cpp, LM Studio, vLLM, a LAN box) are discovered through the runtime adapter
-(`lib/local_runtime.py`). Chat traffic still goes through the **same** OpenAI-compatible
+`ollama` (via its OpenAI-compatible `/v1` endpoint) and any OpenAI-compatible local server
+reachable through `custom` (llama.cpp, LM Studio, vLLM, a LAN box) are discovered through the
+runtime adapter (`lib/local_runtime.py`). Chat traffic goes through the **same** OpenAI-compatible
 `/chat/completions` path as every other provider — the adapter only adds connection checks,
-installed-model discovery and per-model capability metadata (context length, tools/vision).
+installed-model discovery and **best-effort** per-model capability metadata (context window read
+from the runtime where it is exposed; vision/tool flags inferred from the model name, not
+verified).
 
 ```powershell
 python -m nexus ai-runtime                       # probe every local runtime

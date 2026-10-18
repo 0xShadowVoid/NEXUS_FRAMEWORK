@@ -268,6 +268,9 @@ Common symptoms and fixes: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 **Technical reference**
 
 - [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) — all commands and flags
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — component/data-flow diagram and repo structure
+- [docs/SUPPORT_STATUS.md](docs/SUPPORT_STATUS.md) — support status + documentation inventory
+- [docs/RELEASE_READINESS.md](docs/RELEASE_READINESS.md) — release sign-off checklist
 - [docs/PHASES.md](docs/PHASES.md) — phase registry reference
 - [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) — built-in vs. optional external tools
 - [docs/SKILLS_REFERENCE.md](docs/SKILLS_REFERENCE.md) — NEMESIS skill files

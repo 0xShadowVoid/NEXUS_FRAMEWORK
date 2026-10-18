@@ -35,7 +35,9 @@ integrations:
 ```
 
 Set the API key out-of-band (never in YAML): `ZAP_API_KEY=...` in the
-environment / `config/.keys.env`. Adapters ship **disabled**.
+environment or `config/.keys.env` (slots for `ZAP_API_KEY`, `BURP_API_KEY`,
+`CAIDO_PAT` and `MCP_REMOTE_TOKEN` are included in `config/.keys.env.example`).
+Adapters ship **disabled**.
 
 ## Enabling Burp
 
@@ -70,9 +72,10 @@ Only capabilities verified against the documented REST API are exposed:
 | Stop / cancel a scan | **no** | no documented endpoint — see below |
 
 Because there is **no stop endpoint**, `cancel_job` reports "unsupported" and
-every timeout/cancellation result is flagged `burp_may_still_be_running: true`.
-A timeout is **not** proof that Burp stopped. Reading results from an existing
-scan id (`--scan-id`) performs **no** active requests.
+every timeout/cancellation result carries the note "Burp may still be scanning
+(no stop endpoint)" in its job `message`; a timeout is **not** proof that Burp
+stopped. Reading results from an existing scan id (`--scan-id`) performs **no**
+active requests.
 
 ## Enabling Caido
 
@@ -154,10 +157,12 @@ nexus caido --mock --findings                          # offline dry run
 - Passive/spider jobs are non-intrusive; **active** scanning requires both
   `integrations.zap.allow_active_scan: true` *and* the per-run
   `--authorize-active` flag.
-- The target is validated against scope before any scan activity; the ZAP
-  endpoint itself passes the SSRF guard.
+- The target is validated against scope before any scan activity. The tool
+  endpoint and target URL additionally pass `lib.ssrf_guard.is_safe_url` with
+  `local_ok=True` (loopback/private allowed for a local or self-hosted
+  instance); cloud-metadata hosts/paths are still refused.
 - Caido never starts a job; its retrieval endpoint passes the SSRF guard and
-  imported finding endpoints are scope-checked.
+  imported finding endpoints are scope-checked (see the scope note below).
 
 ## Adapter contract
 
@@ -185,17 +190,26 @@ Value objects: `JobSpec` (target/kind/params/authorized/timeout),
 - **Scope (fail closed):** `validate_target_scope` runs before any job starts;
   an out-of-scope or malformed target raises `AdapterPolicyError`. A missing
   `target_config` is **not** treated as "everything is in scope" — the gate
-  denies with `scope: no target configuration (fail closed)`. The CLI always
-  derives one (`cfg.target(extract_host(target))`), so supported adapter paths
-  always carry a scope context.
+  denies with `scope: no target configuration (fail closed)`. The scan CLI
+  derives one from `--domain` (or the active target, `cfg.target(extract_host(target))`).
+  Read-only import paths without a scope context (`--import-scan` with no
+  `--domain`/target, e.g. `caido --findings`) store findings out-of-scope
+  (fail closed).
 - **Authorization:** active/intrusive jobs require the policy master switch
-  (`allow_active`) *and* per-run authorization (`spec.authorized`).
-- **SSRF:** the tool endpoint and target URLs pass `lib.ssrf_guard.is_safe_url`.
+  (`allow_active`) *and* per-run authorization (`spec.authorized`), which the
+  CLI wires from `--authorize-active` for ZAP and Burp.
+- **SSRF:** the tool endpoint and target URL pass `lib.ssrf_guard.is_safe_url`
+  with `local_ok=True` — loopback/private destinations are permitted (for a
+  local/self-hosted instance) while cloud-metadata hosts/paths remain refused.
 - **Budgets & kill switch:** `lib.ops_guard` (`spend_requests`, `KillSwitch`).
-- **Untrusted output:** tool alerts and HTTP content are never executed;
-  every string is redacted (`lib.redaction`) and length-capped
-  (`core.sanitizer`) before it becomes a finding, log line or evidence row.
-- **Audit:** every start/stop/collect is recorded (`category="adapter"`).
+- **Untrusted output:** tool alerts and HTTP content are never executed; free-text
+  fields are redacted (`lib.redaction`) and length-capped (`core.sanitizer`)
+  before they become a finding/log/evidence row. Short identifiers copied from
+  an alert (`method`, `cwe_id`, `plugin_id`, `alert_id`) are preserved as
+  provenance and are **not** run through the redactor.
+- **Audit:** start/stop/collect are recorded (`category="adapter"`) **when a
+  database is attached** (i.e. `--import-scan`); standalone read-only runs write
+  no audit rows.
 
 ## Findings & evidence provenance
 
@@ -219,8 +233,11 @@ from lib.adapters.registry import register
 def build_myproxy(spec): return MyProxyAdapter(...)
 ```
 
-That is the only change required — `GuardedAdapter`, the CLI wiring point, and
-`ingest_findings` are product-agnostic.
+`GuardedAdapter`, `ingest_findings` and the policy layer are product-agnostic,
+but a new product additionally needs: (1) its module added to the loader tuple
+in `lib/adapters/registry.py` (`("zap", "burp", "caido")`), and (2) a CLI
+subcommand (`cmd_*` + `add_parser`) in `nexus.py`. The registry does **not**
+auto-discover adapter modules.
 
 ## Limitations
 

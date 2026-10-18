@@ -31,7 +31,7 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 ### Scanning
 - `hunt TARGET` — scan a single target (accepts the shared scan flags above).
 - `batch FILE [--concurrent N] [--sequential]` — scan targets from a text file (one per line).
-- `hunt-schedule [NAME] [--list | --daily TARGET | --weekly TARGET | --every-6h TARGET | --cron EXPR | --name S | --target T]` — manage schedules executed by `serve`.
+- `hunt-schedule [NAME] [--list | --daily TARGET | --weekly TARGET | --every-6h TARGET | --cron EXPR --target T | --name S]` — manage schedules executed by `serve` (`--cron` requires `--target`).
 - `hunt-new [--enable | --disable]` — first-blood auto-hunt toggle/status (Phase 4).
 - `dork TARGET [--intents LIST] [--engines LIST]` — multi-engine Google-dorking (engines off unless configured).
 

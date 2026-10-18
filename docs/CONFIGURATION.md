@@ -30,11 +30,15 @@ Missing variables resolve to the empty string so the framework degrades graceful
 |---|---|---|
 | `discover.enabled` | `true` | `tools:` selects discover tools |
 | `probe.enabled` | `true` | `default_tools: [nuclei, dalfox]` |
-| `hunt.enabled` | `false` | auto-hunt stays off by design |
-| `control.enabled` | `false` | C2 bot off by design |
-| `scale.enabled` | `false` | scaffold only |
+| `hunt.enabled` | `false` | auto-hunt stays off by design (also `hunt.intensity`, `hunt.max_scans_per_day`, `hunt.alert_on`, `hunt.vdp_strategy`, `hunt.bb_strategy`) |
+| `control.enabled` | `false` | **not wired** — the C2 bot runs only via explicit `nexus control` (gated by `c2_bot.enabled`) |
+| `scale.enabled` | `false` | **not wired** — scaffold only |
 | `network.*` | enabled, gated | `ports: []` (conservative default set), `concurrency: 16`, `connect_timeout: 1.5`, `probe_timeout: 2.0`, `max_ports: 512`, `allow_private: false` |
 | `cloud.*` | enabled, gated | `providers: []`, `accounts: {}` (fails closed when empty), `max_resources: 200`, optional `region` / `project` hints |
+
+Only **registered** phase names honor `phases.<name>.enabled`:
+`discover, probe, verify, analyze, authn, authz, takeover, network, cloud, intel, report`.
+Keys for unregistered phases (`control`, `scale`) are ignored.
 
 `network` and `cloud` also require explicit scope (an in-scope IP grant / `scope_kind: cloud`
 target). See [SECURITY.md](SECURITY.md) and [PHASES.md](PHASES.md).
@@ -56,6 +60,9 @@ targets:
 
 | Key | Meaning |
 |---|---|
+| `platform` | reporting platform (`generic` / `hackerone` / `bugcrowd` / `intigriti` / `yeswehack`) |
+| `type` | program type (`bb` bounty / `vdp`) |
+| `scope` | scope kind (`public` / …) — feeds phase gating (e.g. cloud/network) |
 | `intensity` | tool-profile selector (`quick-scan` / `full-scan` / `deep`) |
 | `tools` | explicit tool list; overrides profile membership |
 | `rate_limit` | per-target rate limit string |
@@ -136,7 +143,10 @@ summary for audit.
 
 ## `schedules:`
 
-Named schedule entries used by `python -m nexus serve`:
+**Reserved — not read by the runtime.** Schedules executed by `python -m nexus serve`
+live in the **database**, created and managed with the `nexus hunt-schedule` command
+(`--daily TARGET`, `--weekly TARGET`, `--every-6h TARGET`, or `--cron EXPR --target T`).
+The `schedules:` block below is parsed but currently has no effect:
 
 ```yaml
 schedules:
@@ -156,14 +166,19 @@ all via `${...}` references into `.keys.env`. Without values, notifications are 
 
 | Key | Default | Meaning |
 |---|---|---|
+| `enabled` | `true` | master switch for AI calls (unset = on) |
 | `provider` | `openai` | one of `openai, glm, deepseek, gemini, kimi, openrouter, custom` (ollama needs no key) |
-| `fallback_providers` | `[glm, deepseek, ...]` | tried in order on failure |
+| `fallback_providers` | `[]` | tried in order on failure (shipped `nexus.yaml` sets `[glm, deepseek, gemini, kimi, openrouter]`) |
 | `model` / `strong_model` | `""` | empty = provider default; strong model for chains/reports |
 | `max_calls` | `0` | per-run AI call budget (0 = unlimited) |
 | `max_retries` | `2` | bounded same-provider retries on transient errors |
 | `reasoning_effort` | `""` | `off`/`low`/`medium`/`high`; **only `openai` and `openrouter`** support it |
-| `timeout_seconds` | `60` | per-request read timeout |
+| `timeout_seconds` | `0` | per-request read timeout (seconds); `0` = no read timeout (shipped `nexus.yaml` sets `60`) |
 | `base_url` | `""` | override, or `<PROVIDER>_BASE_URL` / `CUSTOM_BASE_URL` env |
+
+> The top-level `ai.provider` / `ai.fallback_providers` values are **not** validated against the
+> provider registry; an unknown or unsupported name there is simply unusable (AI stays disabled).
+> Use `nemesis.agents` for validated, fail-fast per-agent configuration.
 
 Multiple keys per provider are read from numbered slots (`GEMINI_API_KEY`,
 `GEMINI_API_KEY_2` … `_10`, or comma-separated) and rotated on failure.
@@ -195,27 +210,37 @@ present, the legacy `ai:` settings are used unchanged.
 
 ## `cve:`
 
-`auto_update: true`, `frequency: daily`, `time: "02:00"`, `alert_severity: [critical, high]`,
-`script_delivery: [email, discord]`, `use_kev: true` (CISA KEV), `use_epss: true`.
+Read: `use_kev: true` (CISA KEV), `use_epss: true` (EPSS scoring), `alert_severity: [critical, high]`.
+
+**Reserved — not wired:** `auto_update`, `frequency`, `time`, `script_delivery`. There is no
+built-in scheduler that acts on these; refresh explicitly with `nexus cve-update` (e.g. from an
+external cron / Windows Task Scheduler).
 
 ## `c2_bot:`
 
-`enabled: true` in config, but the `control` phase itself is off by default; channels
-`[discord, telegram]`, `use_same_webhook: true`.
+Read: `enabled: true` and `channels: [discord, telegram]`. The C2 bot runs only via the explicit
+`nexus control` command (there is no auto-scheduled control phase).
+
+**Reserved — not wired:** `use_same_webhook` (each channel uses its own webhook/token).
 
 ## `nemesis:`
 
 | Key | Default | Meaning |
 |---|---|---|
-| `enabled` | `true` | additive reasoning layer |
+| `enabled` | `true` | informational only — components gate themselves individually (not read as a master switch) |
 | `memory.enabled` | `true` | local SQLite engagement memory |
 | `skills.enabled` | `[]` | **no skill is auto-enabled**; list names to activate (see [SKILLS_REFERENCE.md](SKILLS_REFERENCE.md)) |
 | `browser.enabled` | `false` | Playwright browser automation (off by default) |
-| `mcp.enabled` | `false` | external MCP tools (off by default) |
+| `agents` | `{}` | per-agent AI provider/model/effort chains (validated; see above) |
+| `runtime` | `{}` | bounded multi-agent runtime limits used by `nexus team` |
+| `mcp.enabled` | `false` | **not the MCP client switch** — the MCP client is gated by the top-level `mcp.enabled` |
 
 ## `results:` / `database:`
 
-`base_dir: results`, `exports_dir: exports`, `database.path: nexus.db`.
+Read: `database.path` (relative paths resolve against the repository root).
+
+**Reserved — not wired:** `results.base_dir` and `results.exports_dir`. Output paths are fixed by
+`lib/paths.py` (`<repo>/results`, `<repo>/exports`); the `results:` block currently has no effect.
 
 ## `mcp:`
 
@@ -269,6 +294,25 @@ authorization + budget controls.
 | `caido.timeout_seconds` | `30` | per-request timeout |
 | `caido.ssrf_allow` | `[]` | extra hosts for the SSRF guard (remote Caido) |
 
+## `authn:`
+
+Operator-configured identities for the optional AUTHN / takeover phases. NEXUS never guesses
+credentials; it only uses what is declared here (these override identities persisted by a prior
+AUTHN run):
+
+```yaml
+authn:
+  identities:
+    - name: member
+      kind: user                 # user | admin | lowpriv | highpriv
+      credential_ref: TEST_USER_TOKEN   # env-var NAME only, never the secret
+    - name: admin
+      kind: admin
+      credential_ref: TEST_ADMIN_TOKEN
+```
+
+Declaring **≥2** identities unlocks the AUTHZ phase (which is otherwise gated off).
+
 ## Environment variables
 
 Secrets and credentials (all optional; set in `config/.keys.env`):
@@ -282,6 +326,7 @@ INTIGRITI_API_KEY, YESWEHACK_API_KEY
 NVD_API_KEY, GITHUB_TOKEN
 OPENAI_API_KEY, GLM_API_KEY, DEEPSEEK_API_KEY, GEMINI_API_KEY,
 KIMI_API_KEY, OPENROUTER_API_KEY, CUSTOM_API_KEY, CUSTOM_BASE_URL
+ZAP_API_KEY, BURP_API_KEY, CAIDO_PAT, MCP_REMOTE_TOKEN
 DISCORD_BOT_TOKEN, C2_OWNER_ID
 ```
 

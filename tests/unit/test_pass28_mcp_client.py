@@ -571,3 +571,24 @@ def test_mock_server_helper_connects():
     status = server.connect()
     assert status["connected"] is True
     server.close()
+
+
+def test_cli_tools_reports_connect_failure(capsys, monkeypatch):
+    """Regression: `mcp --tools` must not exit 0 when the connection failed."""
+    from lib.mcp import gateway as gw
+
+    class _Failing:
+        def connect(self):
+            return {"connected": False, "error": "connect boom"}
+
+        def capabilities(self):
+            return {"tools": []}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(gw, "mock_server", lambda *a, **k: _Failing())
+    code = nexus.main(["mcp", "--mock", "--tools"])
+    out = capsys.readouterr()
+    assert code == 1
+    assert "connect boom" in out.out

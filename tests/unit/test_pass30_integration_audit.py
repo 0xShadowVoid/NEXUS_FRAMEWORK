@@ -170,6 +170,13 @@ def test_database_init_is_migrated_and_idempotent(tmp_path):
     reopened.close()
 
 
+def test_schema_version_constant_matches_migration_target():
+    """Regression: the exposed SCHEMA_VERSION must not drift from the chain."""
+    from core import database as core_db
+
+    assert core_db.SCHEMA_VERSION == migrations.TARGET
+
+
 # ---------------------------------------------------------------------------
 # 3. AI provider failure / fallback / redaction
 # ---------------------------------------------------------------------------

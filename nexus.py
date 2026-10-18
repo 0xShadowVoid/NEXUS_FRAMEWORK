@@ -653,7 +653,8 @@ def cmd_burp(args: argparse.Namespace) -> int:
 
         if target:
             handle = guarded.start_job(JobSpec(
-                target=target, kind=KIND_ACTIVE, authorized=True,
+                target=target, kind=KIND_ACTIVE,
+                authorized=bool(getattr(args, "authorize_active", False)),
                 poll_interval=float(getattr(args, "poll", 1) or 1),
                 timeout=float(getattr(args, "timeout", 0) or 0),
             ))
@@ -802,7 +803,10 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     try:
         status = server.connect()
         call = str(getattr(args, "call", "") or "")
-        if str(status.get("error") or "") and not getattr(args, "tools", False) and not call:
+        errored = str(status.get("error") or "")
+        if errored and not call:
+            # Discovery failed (unreachable, auth, SSRF): report it and fail,
+            # including for --tools, so a failed probe is never exit 0.
             print(json.dumps(status, indent=2, default=str))
             return 1
         if getattr(args, "tools", False):

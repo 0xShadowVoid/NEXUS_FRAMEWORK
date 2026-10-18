@@ -5,6 +5,8 @@ NEXUS 2.0.1 ("Apex") is a modular bug bounty and security automation framework d
 
 This guide outlines operational deployment, configuration, secure execution, backup, and recovery procedures for NEXUS 2.0.1.
 
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the component/data-flow diagram and repository layout, and [SUPPORT_STATUS.md](SUPPORT_STATUS.md) for what is verified/supported versus unverified.
+
 ---
 
 ## 2. Secure Installation Workflow
@@ -26,9 +28,14 @@ python -m nexus --help
 ---
 
 ## 3. Configuration & Environment Setup
-NEXUS requires two configuration files located under `config/`:
-1. `config/nexus.yaml` — Scanning defaults, phase registries, rate limits, and target scopes.
-2. `config/.keys.env` — API keys and webhooks (git-ignored, never committed).
+NEXUS requires two **committed** configuration files under `config/`:
+1. `config/nexus.yaml` — scanning defaults, phase registries, rate limits, and target scopes.
+2. `config/false_positive_filters.yaml` — false-positive filter rules.
+
+`load_config()` raises a clear `ConfigError` if either file is missing (or malformed).
+A third file is **optional** and git-ignored:
+3. `config/.keys.env` — API keys and webhooks (created from `config/.keys.env.example`;
+   the framework runs offline without it).
 
 ### Sample Environment File (`config/.keys.env.example` placeholder)
 ```ini
@@ -59,7 +66,7 @@ TELEGRAM_CHAT_ID=
 ---
 
 ## 5. Scope Configuration & Safety Policies
-- **Scope Enforcement:** Every scan target is validated against `in_scope` and `oos` (out-of-scope) definitions in `config/nexus.yaml` prior to issuing any network traffic.
+- **Scope Enforcement:** Every scan target is validated against `in_scope` and `out_of_scope` definitions in `config/nexus.yaml` prior to issuing any network traffic.
 - **Payload Guard:** Prohibits destructive SQL, reverse shells, download-and-execute payloads, and webshells.
 - **Audit Logs:** Recorded in SQLite (`nexus.db` at the repository root) and audit log files.
 
@@ -72,6 +79,14 @@ TELEGRAM_CHAT_ID=
   python -m nexus export target.com --format zip
   python -m nexus import exported.zip --merge
   ```
+- **Schema upgrades:** migrations are strictly additive and run automatically on the
+  first connection. An existing `nexus.db` from any prior version is upgraded in place
+  (current target schema version is **5**), preserving all data. Re-opening the database
+  repeatedly is safe and idempotent.
+- **Corrupt database:** opening a non-SQLite or truncated file raises
+  `sqlite3.DatabaseError`. Recover by moving the file aside
+  (`Move-Item nexus.db nexus.db.bad`) and restoring from a `backup_to()` copy; NEXUS
+  recreates a fresh, migrated database on the next start.
 
 ---
 

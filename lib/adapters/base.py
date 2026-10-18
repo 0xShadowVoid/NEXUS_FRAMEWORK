@@ -586,9 +586,14 @@ def ingest_findings(
     out_of_scope = 0
     source = phase or (findings[0].source if findings else "")
     for finding in findings:
-        in_scope = True
-        if target_config is not None and finding.endpoint:
+        if target_config is None:
+            # No scope context to check against: fail closed rather than
+            # persisting an unscoped finding as submittable in-scope.
+            in_scope = False
+        elif finding.endpoint:
             in_scope = bool(validate_finding_scope(finding.endpoint, target_config))
+        else:
+            in_scope = True
         if not in_scope:
             out_of_scope += 1
         fid = db.insert_finding(

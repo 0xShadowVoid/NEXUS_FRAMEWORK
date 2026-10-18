@@ -495,3 +495,27 @@ def test_cmd_burp_out_of_scope_scan_rejected(monkeypatch, capsys):
                                   authorize_active=True, domain="example.com"))
     assert rc == 1
     assert "blocked" in capsys.readouterr().err.lower()
+
+
+def test_cmd_burp_spec_authorized_follows_flag(monkeypatch, capsys):
+    """Regression: the JobSpec must carry the explicit authorization flag.
+
+    Previously the Burp path hard-coded ``authorized=True``, bypassing the
+    per-job gate in ``GuardedAdapter`` even when the flag was absent.
+    """
+    import nexus
+    from lib.adapters import base as abase
+
+    captured: dict = {}
+    real_start = abase.GuardedAdapter.start_job
+
+    def spy(self, job):
+        captured["authorized"] = job.authorized
+        return real_start(self, job)
+
+    monkeypatch.setattr(abase.GuardedAdapter, "start_job", spy)
+    monkeypatch.setattr(nexus, "load_config", lambda *a, **k: _cli_cfg())
+    rc = nexus.cmd_burp(_cli_args(mock=True, active="http://example.com/",
+                                  authorize_active=True, domain="example.com"))
+    assert rc == 0
+    assert captured["authorized"] is True

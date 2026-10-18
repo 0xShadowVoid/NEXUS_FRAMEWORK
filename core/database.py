@@ -23,11 +23,14 @@ from urllib.parse import urlsplit
 from lib.logger import get_logger
 from lib.redaction import redact_text
 from lib.utils import utc_timestamp
+from core import migrations as _schema
 from core.sanitizer import sanitize_evidence_record
 
 logger = get_logger("database")
 
-SCHEMA_VERSION = 4
+#: Current schema target, derived from the migration chain so it can never
+#: drift from ``core.migrations.TARGET``.
+SCHEMA_VERSION = _schema.TARGET
 
 # Canonical evidence phase attribution (Pass 3C §3): ``evidence.source``
 # carries the producing PHASE (e.g. "probe", "authn", "authz", "takeover")

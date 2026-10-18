@@ -204,7 +204,7 @@ class AIAnalyzer:
         )
 
     def base_url_for(self, provider: str) -> str:
-        """Resolve base URL: config override → <PROVIDER>_BASE_URL env → built-in."""
+        """Resolve base URL: <PROVIDER>_BASE_URL env → config override → built-in."""
         env_key = f"{provider.upper().replace('-', '_')}_BASE_URL"
         if self.env.get(env_key):
             return self.env[env_key]
