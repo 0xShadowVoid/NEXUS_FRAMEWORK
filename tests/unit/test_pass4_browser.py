@@ -300,3 +300,221 @@ def test_chain_validation_detects_redirect_loop():
         "https://example.com/a", _FakeResp(302, "https://example.com/b"), fetch_next=fetch_next
     )
     assert not ok and "loop" in blocked
+
+
+# --- capability probe: package present but browser not usable ---------------------
+
+def _install_fake_playwright(monkeypatch, *, executable_path=None, start_raises=False):
+    """Inject a fake ``playwright`` package so the probe can be tested offline."""
+    import sys
+    import types
+
+    pkg = types.ModuleType("playwright")
+    sync = types.ModuleType("playwright.sync_api")
+
+    class _Chromium:
+        def __init__(self, path):
+            self.executable_path = path
+
+    class _Playwright:
+        def __init__(self, path):
+            self.chromium = _Chromium(path)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def _sync_playwright():
+        if start_raises:
+            raise RuntimeError("driver unavailable")
+        return _Playwright(executable_path)
+
+    sync.sync_playwright = _sync_playwright
+    monkeypatch.setitem(sys.modules, "playwright", pkg)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", sync)
+
+
+def test_playwright_available_false_when_package_missing(monkeypatch):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "playwright", None)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", None)
+    assert playwright_available() is False
+
+
+def test_playwright_available_true_when_browser_installed(tmp_path, monkeypatch):
+    exe = tmp_path / "chromium"
+    exe.write_text("x", encoding="utf-8")
+    _install_fake_playwright(monkeypatch, executable_path=str(exe))
+    assert playwright_available() is True
+
+
+def test_playwright_available_false_when_browser_missing(tmp_path, monkeypatch):
+    _install_fake_playwright(monkeypatch, executable_path=str(tmp_path / "not-installed"))
+    assert playwright_available() is False
+
+
+def test_playwright_available_false_when_driver_start_fails(monkeypatch):
+    _install_fake_playwright(monkeypatch, executable_path="whatever", start_raises=True)
+    assert playwright_available() is False
+
+
+# --- request gate (browserless coverage of the route layer) -----------------------
+
+class _FakeRoute:
+    def __init__(self, url, resource_type, fetch_response=None, fetch_raises=False):
+        import types
+
+        self.request = types.SimpleNamespace(url=url, resource_type=resource_type)
+        self.calls = []
+        self._fetch_response = fetch_response
+        self._fetch_raises = fetch_raises
+
+    def abort(self):
+        self.calls.append("abort")
+
+    def continue_(self):
+        self.calls.append("continue")
+
+    def fetch(self, max_redirects=0):
+        self.calls.append(("fetch", max_redirects))
+        if self._fetch_raises:
+            raise RuntimeError("route.fetch unavailable")
+        return self._fetch_response
+
+    def fulfill(self, response=None):
+        self.calls.append("fulfill")
+
+
+def test_route_gate_aborts_disallowed_document():
+    adapter = _bare_adapter()
+    route = _FakeRoute("http://169.254.169.254/latest/meta-data/", "document")
+    adapter._route_handler(route)
+    assert "abort" in route.calls
+    assert adapter._blocked_navigations == 1
+    assert adapter._blocked_requests == ["http://169.254.169.254/latest/meta-data/"]
+
+
+def test_route_gate_allows_and_continues_plain_subresource():
+    adapter = _bare_adapter()
+    route = _FakeRoute("https://example.com/pixel.png", "image")
+    adapter._route_handler(route)
+    assert route.calls == ["continue"]
+
+
+def test_route_gate_validates_document_chain_then_fulfills():
+    adapter = _bare_adapter()
+    adapter.max_redirect_hops = 10
+    route = _FakeRoute("https://example.com/ok", "document", fetch_response=_FakeResp(200))
+    adapter._route_handler(route)
+    assert ("fetch", 0) in route.calls          # chain validated out-of-browser
+    assert "fulfill" in route.calls
+    assert adapter._blocked_requests == []
+
+
+def test_route_gate_falls_back_to_continue_when_fetch_unavailable():
+    adapter = _bare_adapter()
+    route = _FakeRoute("https://example.com/ok", "document", fetch_raises=True)
+    adapter._route_handler(route)
+    assert route.calls == [("fetch", 0), "continue"]
+
+
+# --- redirect-chain bounds (fail-closed envelope) ---------------------------------
+
+def test_chain_validation_without_guard_is_permissive():
+    adapter = _bare_chain_adapter()
+    adapter.request_guard = None
+    ok, reason = adapter._validate_redirect_chain(
+        "https://example.com/a", _FakeResp(302, "https://example.com/b")
+    )
+    assert ok and reason == ""
+
+
+def test_chain_validation_missing_location_stops():
+    adapter = _bare_chain_adapter()
+    ok, reason = adapter._validate_redirect_chain("https://example.com/a", _FakeResp(302))
+    assert ok and reason == ""
+
+
+def test_chain_validation_fetch_failure_fails_open_for_watchdog():
+    adapter = _bare_chain_adapter()
+
+    def fetch_next(url):
+        raise RuntimeError("hop unavailable")
+
+    ok, reason = adapter._validate_redirect_chain(
+        "https://example.com/a", _FakeResp(302, "https://example.com/b"), fetch_next=fetch_next
+    )
+    assert ok and reason == ""
+
+
+def test_chain_validation_bounds_too_many_redirects():
+    adapter = _bare_chain_adapter()
+    adapter.max_redirect_hops = 2
+    nxt = {
+        "https://example.com/b": "https://example.com/c",
+        "https://example.com/c": "https://example.com/d",
+    }
+
+    def fetch_next(url):
+        return _FakeResp(302, nxt[url])
+
+    ok, reason = adapter._validate_redirect_chain(
+        "https://example.com/a", _FakeResp(302, "https://example.com/b"), fetch_next=fetch_next
+    )
+    assert not ok and "too many redirects" in reason
+
+
+# --- cancellation, download sandbox, guarded wiring -------------------------------
+
+def test_bare_adapter_cancel_sets_flag_and_check_raises():
+    adapter = _bare_adapter()
+    adapter._cancelled = False
+    adapter._page = None
+    adapter.cancel()
+    assert adapter._cancelled is True
+    with pytest.raises(BrowserPolicyError):
+        adapter._check_cancelled()
+
+
+def test_download_escape_guard_blocks_when_sanitizer_fails(tmp_path, monkeypatch):
+    import lib.nemesis.browser as browser_mod
+
+    monkeypatch.setattr(browser_mod, "sanitize_path_component", lambda _v: "../escape.bin")
+    with pytest.raises(BrowserPolicyError):
+        browser_mod._safe_download_target(tmp_path, "anything")
+
+
+def test_guarded_start_stop_delegate_to_adapter():
+    adapter = MockBrowserAdapter()
+    gb = GuardedBrowser(adapter, _policy())
+    gb.start()
+    gb.stop()
+    assert [a["action"] for a in adapter.actions] == ["start", "stop"]
+
+
+def test_guarded_open_tab_is_gated_and_fill_requires_authorization():
+    adapter = MockBrowserAdapter()
+    policy = _policy()
+    gb = GuardedBrowser(adapter, policy)
+    with pytest.raises(BrowserPolicyError):
+        gb.open_tab("http://169.254.169.254/")
+    assert adapter.actions == []                       # gated before the adapter
+    with pytest.raises(BrowserPolicyError):
+        gb.fill_form("#pw", "secret")
+    assert adapter.actions == []
+    policy.authorize_state_changes()
+    obs = gb.open_tab("https://example.com/")
+    assert obs.action == "navigate"
+
+
+def test_guarded_browser_wires_request_guard_for_playwright_adapter():
+    from lib.nemesis.browser import PlaywrightBrowserAdapter
+
+    adapter = PlaywrightBrowserAdapter.__new__(PlaywrightBrowserAdapter)
+    adapter.request_guard = None
+    policy = _policy()
+    GuardedBrowser(adapter, policy)
+    assert adapter.request_guard == policy.check_url

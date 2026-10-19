@@ -31,7 +31,9 @@ from lib.nemesis.browser import (
     run_browser_task,
 )
 
-pytestmark = pytest.mark.skipif(not playwright_available(), reason="playwright not installed")
+pytestmark = pytest.mark.skipif(
+    not playwright_available(), reason="playwright browser backend unavailable"
+)
 
 _HTML = """<html><head><title>Nexus Test App</title></head>
 <body><h1>Hello NEXUS</h1>

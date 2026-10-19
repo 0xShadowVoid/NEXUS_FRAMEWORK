@@ -472,11 +472,22 @@ def _safe_download_target(base: Path | str, filename: str) -> Path:
 
 
 def playwright_available() -> bool:
-    """True when the real browser backend can be used."""
-    try:
-        from playwright.sync_api import sync_playwright  # noqa: F401
+    """True when a *usable* real browser backend is present.
 
-        return True
+    Requires both that the ``playwright`` package imports **and** that a
+    browser executable is actually installed for it. A package-only install
+    (the package present but ``playwright install`` never run) is a common
+    half-install; treating it as unavailable lets callers and test skips
+    degrade cleanly instead of failing later inside ``chromium.launch()``.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception:
+        return False
+    try:
+        with sync_playwright() as pw:  # starts then stops the driver
+            executable = pw.chromium.executable_path
+        return bool(executable) and Path(executable).exists()
     except Exception:
         return False
 
