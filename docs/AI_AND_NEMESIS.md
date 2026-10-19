@@ -124,7 +124,7 @@ agent planning falls back to deterministic heuristics.
 | Engagement memory (local SQLite) | `nemesis.memory.enabled` | on |
 | Skills (methodology playbooks) | `nemesis.skills.enabled: []` | none active — see [SKILLS_REFERENCE.md](SKILLS_REFERENCE.md) |
 | Browser automation (Playwright) | `nemesis.browser.enabled` | off |
-| MCP transport | `nemesis.mcp.enabled` | off |
+| MCP transport | top-level `mcp.enabled` (not `nemesis.mcp`) | off |
 
 ## Security and privacy
 

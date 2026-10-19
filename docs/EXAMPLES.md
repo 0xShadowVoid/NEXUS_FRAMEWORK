@@ -36,7 +36,8 @@ Where results land (`results/<target>-<platform>-<type>-<scope>-<date>-<time>/`)
 ## Workflow 2: Bug-hunting session (finding real bugs)
 
 ```powershell
-# Recon only, with dorking across all 4 engines
+# Recon only, with dorking across the configured engines (default: DuckDuckGo + GitHub;
+# supported: duckduckgo, google, bing, github)
 python nexus.py hunt acme.com --discover-only
 
 # Check what the dorker found (exposed docs, backups, GitHub leaks)

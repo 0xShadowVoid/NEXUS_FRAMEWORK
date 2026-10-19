@@ -58,9 +58,10 @@ alerts, and chains, but remain in the raw findings/report so you can audit what 
 
 ## Default-off surfaces
 
-Auto-hunt (`hunt`), the C2 control bot, NEMESIS browser automation, MCP transport, and cloud
-providers are **off by default** and require explicit configuration. Optional external tools
-are never bundled.
+Auto-hunt (`hunt-new`), the C2 control bot (`c2`), NEMESIS browser automation, MCP transport,
+and cloud providers are **off by default** and require explicit configuration. Optional
+external tools are never bundled. For the full control-by-control model, see
+[SECURITY_MODEL.md](SECURITY_MODEL.md).
 
 ## Reporting a vulnerability in NEXUS itself
 

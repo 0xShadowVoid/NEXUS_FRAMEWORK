@@ -38,7 +38,7 @@ automated test → `unverified`).
 | `cve-scan` | `nexus.cmd_cve_scan`, `lib/cve_fetcher.py` | supported | `tests/unit/test_pass3c_cve.py` |
 | `verify` | `nexus.cmd_verify`, `core/lifecycle.py` | supported | `tests/unit/test_pass3b_lifecycle.py`, `test_verifier.py` |
 | `reject` | `nexus.cmd_reject`, `lib/false_positive_filter.py` | supported | `tests/unit/test_fp_learning.py` |
-| `dork` | `nexus.cmd_dork`, `phases/discover/dorker.py` | supported (engines off by default) | `tests/unit/test_dorker.py` |
+| `dork` | `nexus.cmd_dork`, `phases/discover/dorker.py` | supported (default engines: `duckduckgo` + `github`; google/bing supported but not enabled by default) | `tests/unit/test_dorker.py` |
 | `doctor` | `nexus.cmd_doctor`, `lib/doctor.py` | supported | `tests/unit/test_ops_tools.py` |
 | `self-scan` | `nexus.cmd_self_scan`, `lib/selfscan.py` | supported | `tests/unit/test_pass24_precommit_secret_scan.py` |
 | `secretscan` | `nexus.cmd_secretscan`, `lib/selfscan.py` | supported | `tests/unit/test_pass24_precommit_secret_scan.py` |
@@ -124,6 +124,7 @@ automated test → `unverified`).
 | Doc | Purpose |
 |---|---|
 | [../README.md](../README.md) | Overview, install, quick start, doc map |
+| [INDEX.md](INDEX.md) | Documentation hub (beginner/expert paths, task lookup) |
 | [GETTING_STARTED.md](GETTING_STARTED.md) | Step-by-step first scan |
 | [BEGINNER_GUIDE.md](BEGINNER_GUIDE.md) | Gentler walkthrough |
 | [INSTALLATION.md](INSTALLATION.md) | Source/wheel/clean-venv installs |
@@ -142,6 +143,9 @@ automated test → `unverified`).
 | [MCP.md](MCP.md) | MCP client + gateway |
 | [AI_AND_NEMESIS.md](AI_AND_NEMESIS.md) | Providers and no-AI behavior |
 | [SECURITY.md](SECURITY.md) | Enforcement matrix and safe-use policy |
+| [SECURITY_MODEL.md](SECURITY_MODEL.md) | Threat model, trust boundaries, residual risks |
+| [TESTING.md](TESTING.md) | Test layout, baselines, browser opt-in, CI |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Conventions, required checks, PR checklist |
 | [HOOKS.md](HOOKS.md) | Secret scanning + pre-commit hook |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Component/data-flow diagram + repo structure |
 | [FEATURE_MAP.md](FEATURE_MAP.md) | Feature history and status |

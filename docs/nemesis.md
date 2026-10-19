@@ -33,8 +33,10 @@ nemesis:
     enabled: []              # NO skill is auto-enabled; list names to activate
   browser:
     enabled: false           # real browser automation (Playwright) — off by default
-  mcp:
-    enabled: false           # external MCP tools — off by default
+
+# External MCP tools are a TOP-LEVEL setting, not part of `nemesis:`.
+mcp:
+  enabled: false             # master switch — off by default
 ```
 
 ## Safety model
@@ -45,7 +47,8 @@ nemesis:
 - Browser page content is always untrusted; optional capabilities ship disabled.
 - Audit categories: `nemesis`, `mcp` (plus the existing agent audit log).
 
-Schema v4 adds `engagement_memory` and `nemesis_sessions` (additive; auto-applies).
+Migration history: v4 added `engagement_memory` and `nemesis_sessions`; v5 added
+`nemesis_tasks` (both additive and auto-applied — current schema target is v5).
 
 ## Bounded multi-agent runtime (`runtime.py`)
 
@@ -65,4 +68,4 @@ execute them under `RunLimits` (parallelism, tasks, wall clock, calls, tokens).
 
 Run it via `nexus team [OBJECTIVE] [--target HOST] [--plan FILE] [--workers N]`.
 
-Schema v5 adds `nemesis_tasks` (additive; auto-applies) for runtime state + provenance.
+`nemesis_tasks` (added in schema v5) stores runtime state + provenance.

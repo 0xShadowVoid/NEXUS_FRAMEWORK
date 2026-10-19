@@ -78,8 +78,9 @@ Then a light scan:
 python -m nexus hunt lab.local
 ```
 
-Output: scan summary in the console; full results in `results/<target>/<scan-id>/`, findings
-and evidence in the SQLite database `nexus.db` (see [REPORTS_AND_DATABASE.md](REPORTS_AND_DATABASE.md)).
+Output: scan summary in the console; full results in
+`results/<domain>-<platform>-<type>-<scope>-<date>-<time>/`, findings and evidence in the
+SQLite database `nexus.db` (see [REPORTS_AND_DATABASE.md](REPORTS_AND_DATABASE.md)).
 
 ## 5. Look at what you found
 

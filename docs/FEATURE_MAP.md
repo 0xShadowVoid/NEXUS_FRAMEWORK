@@ -1,4 +1,7 @@
-# NEXUS — Feature Map (82 features)
+# NEXUS — Feature Map
+
+Status below is per row. The numbered core table is historical numbering, not a live count;
+treat [SUPPORT_STATUS.md](SUPPORT_STATUS.md) as the authoritative inventory.
 
 Status legend: **done** = implemented + covered by tests · **partial** = implemented
 with documented limits · **scaffold** = placeholder pending approval.
@@ -172,6 +175,7 @@ exploit feeds & zero-day watch (paid/beyond-NVD sources), K5 supply-chain recon.
 
 ## Summary
 
-- **done:** 74
-- **partial:** 5 (28, 29, 47, 65, + screenshot capture depends on an external binary)
-- **scaffold:** Phase 6 SCALE (per spec, intentionally not implemented)
+Statuses are maintained per row and in the per-wave tables above; no single numeric total is
+asserted here (the historical numbering runs to 82, while several later items are recorded as
+partial or not built). The living inventory of supported/unsupported capabilities is
+[SUPPORT_STATUS.md](SUPPORT_STATUS.md).

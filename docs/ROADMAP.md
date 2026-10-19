@@ -1,6 +1,10 @@
 # NEXUS — Upgrade & Enhancement Roadmap
 
-> **Status @ 2.0.0 “Apex”:** all tractable roadmap items across Waves 1–3 are shipped.
+> **Historical planning document.** It records the original upgrade plan and its waves; it is
+> **not** the current status source. For shipped/not-built status see
+> [FEATURE_MAP.md](FEATURE_MAP.md) and [SUPPORT_STATUS.md](SUPPORT_STATUS.md).
+>
+> **Status @ 2.0.2 “Apex”:** every tractable roadmap item across Waves 1–3 is shipped.
 > What remains requires live infrastructure or credentials (multi-host SCALE dispatch,
 > cloud-posture depth, mobile/APK, Semgrep, signed releases, VCR/mutation rigs, bot UI
 > buttons, screenshot PII blur, commercial exploit feeds) — each is documented in
@@ -60,7 +64,7 @@ Priorities: **P0** = do next (high impact, low/medium effort) · **P1** = next w
 | D5 | **`nexus doctor`** — validate env, deps, config, permissions, tool availability | Cuts setup pain | S | P1 |
 | D6 | **Delta scanning** — only scan new/changed subdomains & URLs since last run | Big time saver | M | P1 |
 | D7 | **Service mode** — long-running scheduler daemon (queue + timers) vs cron-invoked | Real scheduling | L | P2 |
-| D8 | **Phase 6 SCALE** — distributed master/worker (SSH or Redis queue) + aggregation | Parallel VPS scanning | L | P2 |
+| D8 | **Phase 6 SCALE** — local master/worker implemented; **multi-host dispatch (SSH/Redis) not built** | Parallel VPS scanning | L | P2 |
 | D9 | **Tool health tracking + circuit breaker** (auto-disable a flaky tool) | Robustness | S | P2 |
 
 ## E. Platform integration

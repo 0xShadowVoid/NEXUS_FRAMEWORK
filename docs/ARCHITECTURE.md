@@ -2,8 +2,10 @@
 
 NEXUS is a modular, offline-first Python framework. This page shows the runtime
 components, the trust boundaries, and the on-disk layout. For the enforcement
-detail behind each boundary see [SECURITY.md](SECURITY.md); for feature status
-see [SUPPORT_STATUS.md](SUPPORT_STATUS.md).
+detail behind each boundary see [SECURITY.md](SECURITY.md) and the threat model in
+[SECURITY_MODEL.md](SECURITY_MODEL.md); for feature status see
+[SUPPORT_STATUS.md](SUPPORT_STATUS.md); for the documentation map see
+[INDEX.md](INDEX.md).
 
 ## Component & data-flow diagram
 
@@ -90,6 +92,10 @@ bounds-checked and redacted, and it can never write NEXUS configuration. The
 
 ## Scan data flow
 
+The core order is declared in `core/phase_registry.py` (`DEFAULT_PLAN`: discover `10`,
+probe `20`, verify `30`, analyze `40`; report runs at `90`). Optional cycles are gated and
+never inserted into the quick path.
+
 ```mermaid
 sequenceDiagram
     participant Op as Operator
@@ -106,7 +112,7 @@ sequenceDiagram
     CLI->>Sc: validate TARGET against in/out-of-scope
     Sc-->>CLI: allow / deny (fail closed)
     CLI->>Co: run phases (gated by phase_registry)
-    Co->>Ph: discover → probe → analyze → verify
+    Co->>Ph: discover → probe → verify → analyze → report
     Ph->>Sc: re-validate every tool target
     Ph->>Tool: spawn (args = argv list, shell=False)
     Tool-->>Ph: raw output (untrusted)

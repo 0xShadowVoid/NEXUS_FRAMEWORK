@@ -22,7 +22,7 @@ Missing variables resolve to the empty string so the framework degrades graceful
 | `request_budget` | `0` | positive N caps requests per scan (0 = unlimited) |
 | `probe_max_urls` | `50` | HTTP collector budget per scan |
 | `ssrf_allow` | `[]` | hosts explicitly permitted despite resolving to private IPs |
-| `dorking_engines` | `[duckduckgo, github]` | scraping engines (off unless enabled) |
+| `dorking_engines` | `[duckduckgo, github]` | dorking engines used by `nexus dork`; restrict this list to disable an engine |
 
 ## `phases:`
 
@@ -31,7 +31,7 @@ Missing variables resolve to the empty string so the framework degrades graceful
 | `discover.enabled` | `true` | `tools:` selects discover tools |
 | `probe.enabled` | `true` | `default_tools: [nuclei, dalfox]` |
 | `hunt.enabled` | `false` | auto-hunt stays off by design (also `hunt.intensity`, `hunt.max_scans_per_day`, `hunt.alert_on`, `hunt.vdp_strategy`, `hunt.bb_strategy`) |
-| `control.enabled` | `false` | **not wired** — the C2 bot runs only via explicit `nexus control` (gated by `c2_bot.enabled`) |
+| `control.enabled` | `false` | **not wired** — the C2 bot runs only via explicit `nexus c2` (gated by `c2_bot.enabled`) |
 | `scale.enabled` | `false` | **not wired** — scaffold only |
 | `network.*` | enabled, gated | `ports: []` (conservative default set), `concurrency: 16`, `connect_timeout: 1.5`, `probe_timeout: 2.0`, `max_ports: 512`, `allow_private: false` |
 | `cloud.*` | enabled, gated | `providers: []`, `accounts: {}` (fails closed when empty), `max_resources: 200`, optional `region` / `project` hints |
@@ -173,7 +173,7 @@ all via `${...}` references into `.keys.env`. Without values, notifications are 
 | `max_calls` | `0` | per-run AI call budget (0 = unlimited) |
 | `max_retries` | `2` | bounded same-provider retries on transient errors |
 | `reasoning_effort` | `""` | `off`/`low`/`medium`/`high`; **only `openai` and `openrouter`** support it |
-| `timeout_seconds` | `0` | per-request read timeout (seconds); `0` = no read timeout (shipped `nexus.yaml` sets `60`) |
+| `timeout_seconds` | `0` | per-request read timeout (seconds); `0` = built-in `(5s connect, 60s read)` default. Shipped `nexus.yaml` omits it, so set `60` or higher explicitly for slow models |
 | `base_url` | `""` | override, or `<PROVIDER>_BASE_URL` / `CUSTOM_BASE_URL` env |
 
 > The top-level `ai.provider` / `ai.fallback_providers` values are **not** validated against the
@@ -219,7 +219,7 @@ external cron / Windows Task Scheduler).
 ## `c2_bot:`
 
 Read: `enabled: true` and `channels: [discord, telegram]`. The C2 bot runs only via the explicit
-`nexus control` command (there is no auto-scheduled control phase).
+`nexus c2` command (there is no auto-scheduled control phase).
 
 **Reserved — not wired:** `use_same_webhook` (each channel uses its own webhook/token).
 

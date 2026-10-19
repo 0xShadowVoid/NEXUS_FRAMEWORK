@@ -11,7 +11,7 @@ binaries** (never bundled; used only when found on `PATH`). The registry of reco
 | Scope validation | `lib/scope_validator.py` | all traffic gated; private-IP rules |
 | SSRF guard | `lib/ssrf_guard.py` | outbound HTTP protection incl. redirect chains |
 | HTTP collection | `lib/http_collector.py` | bounded, rate-limited fetcher |
-| Dorking | `phases/discover/dorker.py` | multi-engine; scraping engines off by default |
+| Dorking | `phases/discover/dorker.py` | multi-engine; `duckduckgo` + `github` enabled by default |
 | Tech detection | `phases/discover/wappalyzer_wrapper.py` | Wappalyzer dataset |
 | CVE workflow | `lib/cve_workflow.py`, `lib/cve_fetcher.py`, `lib/versioning.py` | KEV/EPSS, version-range matching |
 | Verification | `lib/verifier.py`, `phases/verify/` | deterministic proof checks |
@@ -24,7 +24,7 @@ binaries** (never bundled; used only when found on `PATH`). The registry of reco
 | GUI | `core/gui.py` | FastAPI, loopback-only, fails closed without credentials |
 | MCP gateway | `lib/nemesis/mcp*.py` | gated Model Context Protocol transport |
 | Tool adapters | `lib/adapters/` | scope-checked third-party tool integrations (ZAP, Burp Suite Professional, Caido; see [ADAPTERS.md](ADAPTERS.md)) |
-| Doctor / self-scan | `lib/doctor.py`, `lib/self_scan.py` | diagnostics; committed-secret scan |
+| Doctor / self-scan | `lib/doctor.py`, `lib/selfscan.py` | diagnostics; committed-secret scan |
 
 ## External binaries (optional)
 

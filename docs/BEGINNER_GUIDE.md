@@ -29,19 +29,31 @@ bugs, not for exploiting them.
 
 ---
 
-## Part 2 — The 6 Phases (what happens when you press go)
+## Part 2 — The core pipeline (what happens when you press go)
 
-Think of it like a factory assembly line. Each phase feeds the next.
+Think of it like a factory assembly line. Every scan runs four core phases, then writes the
+report:
 
-| Phase | Name | Plain English | Automatic? |
+| Step | Name | Plain English | Automatic? |
 |---|---|---|---|
 | 1 | **DISCOVER** | "Map the target." Find subdomains, URLs, what tech the site runs, what Google/GitHub leaks about it | Always runs |
-| 2 | **PROBE** | "Test for bugs." Fire scanners at the map from phase 1 | Always runs |
-| 2b | **VERIFY** | "Is it real?" Checks each finding's evidence so fake results die here | Always runs |
-| 3 | **ANALYZE** | "Make sense of it." Merge duplicates, score severity, find bug-chains, drop false positives | Always runs |
-| 4 | **HUNT** | "New programs? Scan them first." Auto-scans brand-new bug bounty programs for first-blood findings | OFF by default |
-| 5 | **CONTROL** | "Boss mode." You send commands from Discord/Telegram like `/nexus hunt target.com` | Optional |
-| 6 | **SCALE** | "More power." Run scans in parallel (currently on one machine; multi-VPS is future) | Optional |
+| 2 | **PROBE** | "Test for bugs." Fire scanners at the map from step 1 | Always runs |
+| 3 | **VERIFY** | "Is it real?" Checks each finding's evidence so fake results die here | Always runs |
+| 4 | **ANALYZE** | "Make sense of it." Merge duplicates, score severity, find bug-chains, drop false positives | Always runs |
+| 5 | **REPORT** | "Write it up." Renders the Markdown report and submission drafts | Always runs |
+
+Optional cycles are **not** part of the default quick path — they run only when their gate is
+satisfied:
+
+| Cycle | Plain English | Gate |
+|---|---|---|
+| **AUTHN / AUTHZ** | Login-surface detection; IDOR/BOLA differential testing | login capability / at least 2 configured identities |
+| **TAKEOVER / NETWORK** | Subdomain takeover; port + service discovery | `extended`/`deep` profile (network also needs explicit IP scope) |
+| **CLOUD** | Read-only AWS/Azure/GCP posture checks | `scope_kind: cloud` + a per-provider account allowlist |
+| **INTEL** | CVE/GHSA/CPE enrichment | `phases.intel.enabled: true` |
+| **CONTROL / SCALE** | C2 bot; local worker coordination | explicit `nexus c2` / config — not core phases |
+
+`hunt-new` ("scan brand-new programs first") is a separate feature and is **off by default**.
 
 **Example:** you run `python nexus.py hunt acme.com` →
 
@@ -72,7 +84,7 @@ does helps you read logs and reports.
 | `ffuf` | Brute-forces **hidden paths** (`/admin`, `/backup`, `/secret`) | Tries every key on every door in the hallway |
 | `katana`, `waybackurls`, `gau`, `jsluice` | Collect **URLs** — from crawling, from the Wayback Machine, from old archives | Archaeologist: digs up every page the site ever had, including "deleted" ones |
 | `dnsx` | Resolves **DNS records** (what IPs point where) | The postal service address lookup |
-| **dorker** (built-in) | Runs **search-engine dorks** on DuckDuckGo, Google, Bing, GitHub to find exposed files, logins, backups, leaks | Asks 4 search engines "show me acme.com's dirty laundry" |
+| **dorker** (built-in) | Runs **search-engine dorks** on DuckDuckGo, Google, Bing, GitHub to find exposed files, logins, backups, leaks (DuckDuckGo + GitHub are enabled by default) | Asks search engines "show me acme.com's dirty laundry" |
 | **tech detection** (built-in) | Identifies the tech stack: "WordPress 6.0, Nginx 1.24, PHP 8.1" | Reads the site's fingerprints |
 | `bbot` | Deep recon framework, 100+ modules (only in `--full-scan`) | The full forensic team (slow, thorough) |
 
@@ -152,7 +164,7 @@ always look there first, that's where the big bounties live.
 
 ## Part 6 — Reading Your Results (where's my bug?)
 
-After a scan, open `results/<target>-<stuff>-<date>-<time>/`:
+After a scan, open `results/<domain>-<platform>-<type>-<scope>-<date>-<time>/`:
 
 ```
 results/acme-hackerone-bb-public-2026-09-26-0230/
@@ -190,14 +202,14 @@ Finding fields decoded:
 Six months from now, start here:
 
 ```powershell
-cd "F:\CyberSec_3\Projects_3\Github Repo Online\NEXUS_FRAMEWORK"
+cd <the folder you cloned NEXUS into>
 
 python nexus.py doctor                    # 1. is everything OK?
 python nexus.py check-tools               # 2. what scanners do I have?
 python nexus.py hunt <target.com>         # 3. GO. (quick scan, safe)
 python nexus.py hunt <target.com> --full-scan --screenshots   # deeper
 
-# results → results\<target>\reports\    ← read the .md file
+# results → results\<domain>-<platform>-<type>-<scope>-<date>-<time>\reports\  ← read the .md file
 # emergency stop → create file: results\.nexus_killswitch
 # what's old?    → python nexus.py retention --days 30
 ```

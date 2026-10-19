@@ -43,7 +43,11 @@ guardrails:
 
 - Skills are **suggestions for the reasoning layer**; every action still passes scope
   validation, payload guarding, and the SSRF guard.
-- Tool lists are validated against the ToolRegistry; unknown tools are rejected.
+- Tool lists are checked against the ToolRegistry (`validate_skill_tools` /
+  `validate_all` report known vs unknown names). Unknown references are never executed; a
+  skill is a methodology suggestion, not a new execution path. Note that `dorker` in the
+  `recon` skill is a built-in dorking capability (`phases/discover/dorker.py`), not an
+  external registry binary.
 - Skills cannot enable destructive behavior — the detection + PoC boundary applies
   (see [SECURITY.md](SECURITY.md)).
 - With `nemesis.skills.enabled: []` (the default) no skill logic runs at all.

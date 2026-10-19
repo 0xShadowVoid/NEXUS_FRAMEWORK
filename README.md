@@ -1,303 +1,282 @@
-# NEXUS — Unified Bug Bounty Automation Framework
+# NEXUS
 
-NEXUS is a modular, offline-first Python framework for **authorized** security testing. It runs
-scope-guarded, multi-phase assessments (`discover → probe → analyze → hunt → control → scale →
-verify → auth → takeover → cloud → network`), records structured evidence in SQLite, and exports
-review-ready reports. **NEMESIS** is the optional AI-assisted reasoning layer on top — it can
-suggest and summarize, but it never validates findings on its own. Every NEXUS phase works
-deterministically **without any AI provider configured**.
+**Authorized security testing — from reconnaissance to a submission-ready report.**
 
-> **Authorized use only.** NEXUS is built for systems you own, lab environments, and bug-bounty
-> programs where you have explicit permission. The framework enforces a technical scope gate, but
-> **you** remain responsible for authorization.
+[![CI](https://github.com/0xShadowVoid/NEXUS_FRAMEWORK/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/0xShadowVoid/NEXUS_FRAMEWORK/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/version-2.0.2%20%22Apex%22-blue)](VERSION)
+[![Python](https://img.shields.io/badge/python-3.11%2B-3776AB)](pyproject.toml)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+NEXUS is a local-first Python framework for **legally authorized** bug-bounty and
+penetration-testing work. It runs a deterministic recon → probe → verify → analyze pipeline,
+collects evidence, filters false positives, detects vulnerability chains, and renders
+Markdown/SARIF/HTML reports — with scope enforced in code before every request and every
+external-tool handoff.
+
+> **Authorization is the entry condition.** Only test systems you own or are explicitly
+> permitted to test. The framework enforces technical scope; it cannot grant legal permission.
 
 ---
 
-## Table of contents
+## Why NEXUS
 
-- [Safety and authorization](#safety-and-authorization)
-- [Key capabilities](#key-capabilities)
-- [Requirements and installation](#requirements-and-installation)
-- [Beginner quick start](#beginner-quick-start)
-- [Configuration and results](#configuration-and-results)
-- [NEMESIS and optional AI](#nemesis-and-optional-ai)
-- [Security model and limitations](#security-model-and-limitations)
-- [Troubleshooting](#troubleshooting)
-- [Documentation map](#documentation-map)
-- [Testing, contributing, license, and support](#testing-contributing-license-and-support)
+| Principle | What it means in practice |
+|---|---|
+| **Scope is law** | `in_scope` is the only authority; `out_of_scope` always wins. Every target is re-validated before each external-tool handoff and on every HTTP redirect hop. Malformed input and missing scope fail **closed**. |
+| **Detection + PoC only** | The payload guard blocks destructive SQL, reverse shells, download-and-execute chains, and webshells. NEXUS proves a bug exists; it does not extract data or persist access. |
+| **Deterministic core** | Every phase works with **no AI key**. AI/NEMESIS is advisory and can suggest — it can never validate a finding. |
+| **Evidence first** | Findings carry tool/source/phase provenance, lifecycle transitions, and sanitized evidence. Reports are built from that record, not from model output. |
+| **Offline-first tests** | The default suite contacts no live external system and needs no credentials. Live integrations are marked `unverified` where no offline fixture can exist. |
+| **Honest status** | [SUPPORT_STATUS.md](docs/SUPPORT_STATUS.md) is the single authoritative map of what is supported, partial, unverified, or unavailable. |
 
-## Safety and authorization
+**At a glance:** Python 3.11+ · Windows/Linux/macOS · SQLite · 37 CLI subcommands · default
+suite **1081 passed, 11 skipped** · Docker image available · no mandatory hosted service.
 
-NEXUS is a **detection and verification aid**, not an exploitation framework. It sends read-only
-GET/HEAD requests on its own HTTP path, rejects destructive payloads, and never runs brute-force
-or post-exploitation logic by itself. Deeper detection is performed by *optional external tools
-you install* (nuclei, dalfox, sqlmap, …) — those tools are your responsibility to configure and
-use within scope.
+---
 
-Before any scan:
+## Quick start
 
-- **Authorize.** Only test assets you have explicit written permission to test.
-- **Configure scope.** Each target in `config/nexus.yaml` carries `in_scope` and `out_of_scope`
-  entries. `out_of_scope` always wins. Scope is enforced before any traffic, again before **every
-  external-tool handoff**, and on every HTTP redirect hop. An exact entry (`example.com`) does
-  **not** imply subdomains — add `*.example.com` to authorize them.
-- **Review what recon found.** Recon (for example dorking) can surface third-party hosts. Those
-  are dropped from external-tool input lists automatically, but the discovered set is still
-  recorded for audit — review it before enabling active probing.
-
-Findings that fall outside scope are marked `OUT_OF_SCOPE` and excluded from submission drafts,
-alerts, and chains — but they are still written to the raw output so you can audit what was seen.
-See [docs/SECURITY.md](docs/SECURITY.md) for the full policy.
-
-## Key capabilities
-
-| Area | Built-in | Optional (you install) |
-|---|---|---|
-| Multi-phase scans | `hunt` (single target), `batch` (target list), `hunt-new` (first-blood auto-hunt) | — |
-| Recon & discovery | Scope gate, attack-surface graph, multi-engine dorking (engines off by default) | `subfinder`, `httpx`, `ffuf`, `katana`, `bbot`, `assetfinder`, … |
-| Probing & verification | Evidence-backed verification workflow, IDOR/authz differential checks | `nuclei`, `dalfox`, `sqlmap`, `arjun`, … |
-| CVE intelligence | CVE feed update, version-range matching against detected tech (KEV/EPSS) | — |
-| Cloud & network posture | Read-only AWS/Azure/GCP posture checks; scoped TCP/TLS/HTTP checks | provider SDKs |
-| Reporting | Markdown reports, SARIF/JSON/CSV/HTML/ZIP/7z export, import/merge, scan diffs, submission drafts | — |
-| Local GUI | FastAPI dashboard + JSON API with HTTP Basic auth (fails closed) | — |
-| NEMESIS | Optional AI triage/summaries, agent loop over whitelisted actions, MCP transport | AI provider key |
-
-## Requirements and installation
-
-- **Python 3.11+** (developed against 3.13).
-- Windows (PowerShell), Linux, or macOS.
-- Optional external security tools are **not** bundled. NEXUS degrades gracefully when they are
-  missing — run `python -m nexus check-tools` to see installed vs. missing.
-
-### Install from source
-
-Windows (PowerShell):
+### 1. Install
 
 ```powershell
 git clone https://github.com/0xShadowVoid/NEXUS_FRAMEWORK.git
 cd NEXUS_FRAMEWORK
 
 python -m venv venv
-.\venv\Scripts\Activate.ps1
+.\venv\Scripts\Activate.ps1        # Windows
+# source venv/bin/activate         # Linux / macOS
 
-python -m pip install --upgrade pip
+pip install --upgrade pip
 pip install .
 ```
 
-Linux / macOS:
+Wheel, Docker, and air-gapped installs: [INSTALLATION.md](docs/INSTALLATION.md).
 
-```bash
-git clone https://github.com/0xShadowVoid/NEXUS_FRAMEWORK.git
-cd NEXUS_FRAMEWORK
-
-python3 -m venv venv
-source venv/bin/activate
-
-python -m pip install --upgrade pip
-pip install .
-```
-
-### Install from a wheel
-
-The `dist/` directory is not committed, so build the wheel first:
-
-```bash
-python -m pip install build
-python -m build --wheel
-pip install dist/nexus_framework-2.0.2-py3-none-any.whl
-```
-
-(The filename reflects the version in `VERSION`; adjust if you build a different version.)
-
-## Beginner quick start
+### 2. Verify
 
 ```powershell
-# 1. Confirm the install
-python -m nexus --version        # -> NEXUS 2.0.2 "Apex"
-python -m nexus --help
-
-# 2. (Optional) create your secrets file — never commit it
-#    Windows:  copy config\.keys.env.example config\.keys.env
-#    Linux:    cp config/.keys.env.example config/.keys.env
-#    Fill in only the integrations you want (AI keys, webhooks).
-
-# 3. Enable pre-commit secret scanning (blocks commits with secrets)
-python -m nexus hooks install    # sets core.hooksPath -> scripts/hooks
-python -m nexus secretscan --staged   # scan staged content any time
-
-# 4. Diagnose the environment and tools
-python -m nexus doctor           # config, dependencies, scope, tools
-python -m nexus check-tools      # installed vs. missing external tools
+python -m nexus --version          # NEXUS 2.0.2 "Apex"
+python -m nexus doctor             # environment, config, scope, database, tools
+python -m nexus check-tools        # optional external binaries found on PATH
 ```
 
-Define an **authorized** target in `config/nexus.yaml`, then run a safe first scan against a
-target you own (a local lab is ideal):
+Missing external tools are **not** an error — affected steps report `skipped` and the
+deterministic pipeline continues. See [TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md).
+
+### 3. Explore offline (no target, no keys, no external tools)
+
+```powershell
+python -m nexus self-scan                  # committed-secret scan (JSON summary)
+python -m nexus mcp --mock --tools         # MCP client, in-memory fake server
+python -m nexus zap --mock --capabilities  # ZAP adapter capabilities, no live ZAP
+python -m nexus burp --mock --capabilities # Burp adapter capabilities
+python -m nexus caido --mock --capabilities# Caido adapter capabilities
+python -m nexus ai-providers               # provider capability matrix
+```
+
+### 4. Run your first **authorized** scan
+
+Declare the target and its scope in `config/nexus.yaml` (only hosts you may test):
+
+```yaml
+targets:
+  lab.local:
+    intensity: quick-scan
+    rate_limit: "50/minute"
+    in_scope: [lab.local, 127.0.0.1]
+    out_of_scope: []
+```
+
+Then run recon first, and a light scan when you are ready:
 
 ```powershell
 python -m nexus hunt lab.local --discover-only   # recon only, no active probing
-python -m nexus hunt lab.local                   # then a light scan (default quick-scan)
+python -m nexus hunt lab.local                   # core pipeline
 ```
 
-What the important commands do:
+### 5. Read the results
 
-| Command | Purpose |
-|---|---|
-| `hunt TARGET` | run the full phase pipeline against one target |
-| `hunt TARGET --discover-only` | recon only — safe exploration, sends no probes |
-| `doctor` | checks Python, dependencies, config, scope, and tool availability |
-| `check-tools` | lists which optional external tools are present |
-| `batch FILE` | scan a list of targets (one per line) |
-| `export TARGET --format sarif` | export findings for review/upload |
+```powershell
+python -m nexus draft 1                  # submission draft for finding #1
+python -m nexus export lab.local --format sarif
+```
 
-For a full walkthrough see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
+Artifacts land in `results/<domain>-<platform>-<type>-<scope>-<date>-<time>/`; findings and
+evidence live in `nexus.db`. Format reference:
+[REPORTS_AND_DATABASE.md](docs/REPORTS_AND_DATABASE.md).
 
-## Configuration and results
+---
 
-All runtime configuration lives in `config/`:
+## How it works
 
-| File | Purpose | Committed? |
+```mermaid
+flowchart LR
+    subgraph Entry["Entry points"]
+        CLI["nexus CLI<br/>37 subcommands"]
+        GUI["Local GUI<br/>loopback + Basic auth"]
+    end
+
+    subgraph Policy["Policy & configuration"]
+        CFG["lib/config.py<br/>nexus.yaml + .keys.env"]
+        SCOPE["Scope gate<br/>fail closed"]
+        OPS["Kill switch + budget"]
+    end
+
+    subgraph Core["Deterministic core"]
+        CO["core/coordinator.py"]
+        PH["phases/<br/>discover → probe → verify → analyze"]
+        LIFE["core/lifecycle.py<br/>candidate → probable → validated"]
+        DB["core/database.py<br/>SQLite + migrations"]
+        REP["core/reporter.py"]
+    end
+
+    subgraph Optional["Optional & external (untrusted, off by default)"]
+        TOOLS["External binaries<br/>nuclei, dalfox, sqlmap, ..."]
+        ADAPT["ZAP / Burp / Caido adapters"]
+        MCP["MCP servers"]
+        AI["AI providers + NEMESIS"]
+    end
+
+    CLI --> CFG
+    GUI --> CFG
+    CFG --> CO
+    CO --> SCOPE --> PH
+    CO --> OPS
+    PH --> TOOLS
+    PH --> ADAPT
+    PH --> MCP
+    CO -. advisory .-> AI
+    PH --> DB
+    CO --> LIFE
+    DB --> REP
+```
+
+Solid arrows are execution flow; the dashed arrow is advisory AI. Everything in the optional
+group is treated as untrusted data and cannot change NEXUS configuration. Full component map,
+trust boundaries and repository layout: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+### The core pipeline
+
+| # | Phase | What it does |
 |---|---|---|
-| `config/nexus.yaml` | targets, scope (`in_scope`/`out_of_scope`), phase toggles, rate limits, AI/CVE/webhook settings | yes (defaults) |
-| `config/false_positive_filters.yaml` | noise filters (required; loaded at startup) | yes |
-| `config/tools.yaml`, `config/methodologies.yaml` | tool registry and methodology presets | yes |
-| `config/.keys.env` | secrets (AI keys, webhooks, API tokens) | **no — git-ignored** |
+| 1 | **DISCOVER** | Subdomains, URLs, tech fingerprinting, dorking — builds the attack surface |
+| 2 | **PROBE** | Detection and PoC testing through scope-checked tool runners |
+| 3 | **VERIFY** | Deterministic confirmation; fake or encoded reflections are disproved |
+| 4 | **ANALYZE** | Dedup, severity, false-positive filtering, chain detection, persistence |
+| 5 | **REPORT** | Markdown report, drafts, and SARIF/HTML/JSON/CSV exports |
 
-Create `config/.keys.env` from `config/.keys.env.example` and fill in only what you need. `${VAR}`
-placeholders in `nexus.yaml` resolve from the OS environment first, then `.keys.env`; missing
-values resolve to empty string so the framework runs offline. `nexus.yaml` and
-`false_positive_filters.yaml` are required — a missing or malformed file fails startup with a
-clear error.
+Optional cycles (`authn`, `authz`, `takeover`, `network`, `cloud`, `intel`) are gated by
+profile, scope kind, or explicit enablement. See [PHASES.md](docs/PHASES.md).
 
-Where results live (all git-ignored):
+---
 
-| Path | Contents |
+## Integrations
+
+Everything below is **disabled by default** and requires explicit configuration. The adapter
+still passes NEXUS scope, authorization, SSRF, budget, and redaction controls.
+
+| Integration | Direction | Status |
+|---|---|---|
+| **OWASP ZAP** | Passive/active scan via JSON REST API | Adapter shipped; live use `unverified` (mock tested) |
+| **Burp Suite Professional** | Crawl + audit via Pro REST API | Adapter shipped; live use `unverified` (mock tested) |
+| **Caido** | Read-only findings + HTTP history via GraphQL | Adapter shipped; live use `unverified` (mock tested) |
+| **MCP** | Client for external MCP tool servers (stdio / Streamable HTTP) | Supported offline; third-party servers `unverified` |
+| **AI providers** | OpenAI-compatible HTTP (OpenAI, GLM, DeepSeek, Gemini, Kimi, OpenRouter, custom, Ollama) | Supported offline; live APIs `unverified` |
+| **Cloud posture** | Read-only AWS/Azure/GCP checks | Partial; needs credentials |
+| **C2 bot** | Discord/Telegram control | Partial; needs bot tokens |
+| **Browser automation** | Playwright, opt-in | Partial; opt-in real-browser CI job |
+
+Details: [ADAPTERS.md](docs/ADAPTERS.md) · [MCP.md](docs/MCP.md) ·
+[AI_AND_NEMESIS.md](docs/AI_AND_NEMESIS.md) · [SKILLS_REFERENCE.md](docs/SKILLS_REFERENCE.md).
+
+---
+
+## Security model
+
+- **Scope** — exact hosts only; wildcards are anchored; IP literals need an explicit entry or
+  CIDR; ports are ignored; malformed input fails closed.
+- **Handoff** — external tools receive only scope-filtered URL/host lists and are spawned as
+  argv lists (no shell).
+- **Payloads** — destructive SQL, shells, download-and-execute, and webshells are rejected
+  recursively, including inside structured MCP arguments.
+- **Persistence** — `core/sanitizer.py` is the single write choke point; credentials, tokens,
+  and banned keys are redacted before evidence or reports are stored.
+- **GUI** — loopback-only by default, Basic auth required, and fail-closed (HTTP 503) when
+  `NEXUS_GUI_USER` / `NEXUS_GUI_PASS` are unset.
+- **Secrets** — never committed; `self-scan` / `secretscan` and the optional pre-commit hook
+  detect leaks.
+
+Read the enforcement matrix in [SECURITY.md](docs/SECURITY.md) and the threat model in
+[SECURITY_MODEL.md](docs/SECURITY_MODEL.md). To report a vulnerability in NEXUS itself, follow
+the root [SECURITY.md](SECURITY.md) policy (no public exploit details).
+
+---
+
+## Commands
+
+The CLI exposes **37 subcommands**. Highlights:
+
+| Area | Commands |
 |---|---|
-| `nexus.db` | SQLite database: scans, findings, evidence, assets, lifecycle transitions |
-| `results/<scan>/` | per-scan `recon/`, `scans/`, `processed/`, `reports/`, `cloud/`, `network/`, `screenshots/` |
-| `exports/` | `export`/`import` bundles (zip / 7z) |
-| `logs/` | runtime logs (rotating) and audit logs |
-| `browser-artifacts/` | NEMESIS browser session artifacts (opt-in) |
+| Scanning | `hunt`, `batch`, `hunt-schedule`, `hunt-new`, `serve` |
+| Findings | `verify`, `reject`, `draft`, `diff`, `export`, `import` |
+| Intelligence | `cve-update`, `cve-scan`, `monitor`, `scope-sync` |
+| Operations | `doctor`, `check-tools`, `self-scan`, `secretscan`, `hooks`, `retention`, `update` |
+| Integrations | `zap`, `burp`, `caido`, `mcp`, `c2`, `openapi`, `graphql` |
+| AI / agents | `agent`, `team`, `ai-keys`, `ai-providers`, `ai-runtime`, `ai-set-key` |
+| Other | `dork`, `gui` |
 
-When installed as a package (rather than run from a checkout), `nexus.db` is created under your
-Python prefix. See [docs/REPORTS_AND_DATABASE.md](docs/REPORTS_AND_DATABASE.md) for the layout,
-export formats, and online backup/restore.
+Full flags and exit behavior: [CLI_REFERENCE.md](docs/CLI_REFERENCE.md). Configuration keys and
+defaults: [CONFIGURATION.md](docs/CONFIGURATION.md).
 
-## NEMESIS and optional AI
+---
 
-NEMESIS adds AI-assisted triage, summaries, and an agent loop over a whitelist of actions. It is
-**entirely optional**: with no provider key, AI calls are skipped and every deterministic phase
-still runs.
+## Documentation
 
-Add a provider key to `config/.keys.env` or use the CLI:
+Start with [docs/INDEX.md](docs/INDEX.md) — it routes both audiences:
 
-```powershell
-python -m nexus ai-set-key --provider deepseek --key <YOUR-KEY>
-python -m nexus ai-keys                 # masked key-pool status
-python -m nexus agent "triage latest findings for lab.local" --dry-run
-```
+| I want to… | Read |
+|---|---|
+| Learn the concepts from zero | [BEGINNER_GUIDE.md](docs/BEGINNER_GUIDE.md) |
+| Do a first scan step by step | [GETTING_STARTED.md](docs/GETTING_STARTED.md) |
+| Look up a command or config key | [CLI_REFERENCE.md](docs/CLI_REFERENCE.md) · [CONFIGURATION.md](docs/CONFIGURATION.md) |
+| Deploy, schedule, back up | [NEXUS_OPERATIONS_GUIDE.md](docs/NEXUS_OPERATIONS_GUIDE.md) · [WORKFLOWS.md](docs/WORKFLOWS.md) |
+| Understand the internals | [ARCHITECTURE.md](docs/ARCHITECTURE.md) · [PHASES.md](docs/PHASES.md) |
+| Review security controls | [SECURITY.md](docs/SECURITY.md) · [SECURITY_MODEL.md](docs/SECURITY_MODEL.md) |
+| Know what is actually supported | [SUPPORT_STATUS.md](docs/SUPPORT_STATUS.md) |
+| Contribute or run tests | [CONTRIBUTING.md](docs/CONTRIBUTING.md) · [TESTING.md](docs/TESTING.md) |
 
-Supported providers and their key variables: `openai` (`OPENAI_API_KEY`), `glm` (`GLM_API_KEY`),
-`deepseek` (`DEEPSEEK_API_KEY`), `gemini` (`GEMINI_API_KEY`), `kimi` (`KIMI_API_KEY`),
-`openrouter` (`OPENROUTER_API_KEY`), `custom` (`CUSTOM_API_KEY` + `CUSTOM_BASE_URL`), and local
-`ollama` (no key). Multiple keys per provider form a failover pool (`_2` … `_10`); failures are
-classified (credentials, rate limit, quota, outage, timeout, unsupported model) and retried or
-skipped accordingly. Per-agent provider/model/reasoning-effort and ordered fallbacks live under
-`nemesis.agents` and are validated at startup. AI actors are advisory only
-and can never move a finding to `validated`. See [docs/AI_AND_NEMESIS.md](docs/AI_AND_NEMESIS.md).
+---
 
-## Security model and limitations
-
-Controls implemented in code (see [docs/SECURITY.md](docs/SECURITY.md) for the verified matrix):
-
-- **Scope gate** — `lib/scope_validator.py` validates the scan target, the built-in HTTP collector,
-  and **every target handed to an external tool** against `in_scope`; `out_of_scope` entries
-  always win, wildcards are anchored (no deceptive-suffix bypass), and malformed input fails
-  closed.
-- **Tool-handoff guard** — `phases/probe/tool_runner.py` re-validates each target immediately
-  before spawning an external tool and fails closed (skips the tool) if any target is out of
-  scope; URL/host lists for nuclei, dalfox, httpx, dnsx, and friends are scope-filtered first.
-- **SSRF guard** — `lib/ssrf_guard.py` blocks metadata endpoints, private/loopback/link-local
-  addresses, and DNS-rebinding, and is applied across the internal HTTP paths.
-- **Payload guard** — `lib/payload_guard.py` rejects destructive SQL, reverse shells, webshells,
-  and download-and-execute payloads.
-- **Secret redaction** — `core/sanitizer.py` redacts credentials/tokens from evidence at the
-  persistence choke point; `python -m nexus self-scan` scans the repo for committed secrets.
-- **Finding lifecycle** — `core/lifecycle.py` enforces `candidate → probable → validated →
-  rejected`; only the deterministic verifier (or a human) can validate.
-- **Local GUI** — `core/gui.py` requires `NEXUS_GUI_USER`/`NEXUS_GUI_PASS` on every protected
-  route and fails closed (HTTP 503) when they are unset. Serve it loopback-only with
-  `python -m nexus gui` (default `127.0.0.1:8080`).
-
-Honest limitations:
-
-- Scope is enforced on NEXUS's own requests and on the targets it hands to external tools; NEXUS
-  cannot police what a third-party binary does **internally** once it receives an authorized
-  target (for example, a tool that follows its own redirects or enumerates third-party services).
-  Prefer tools you trust and keep `in_scope` precise.
-- An exact `in_scope` entry does not authorize subdomains — add `*.example.com` to test them.
-- Detection is heuristic and tool-dependent; findings need human review before submission.
-- Optional integrations (C2 bot, cloud SDKs, browser automation, MCP) are disabled until
-  configured and are not required for the core workflow.
-
-## Troubleshooting
-
-Start with the built-in diagnostics:
+## Development & tests
 
 ```powershell
-python -m nexus doctor
+pip install .[dev]
+python -m pytest tests -q
 ```
 
-Common symptoms and fixes: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
-
-## Documentation map
-
-**Beginner**
-
-- [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) — step-by-step first scan
-- [docs/INSTALLATION.md](docs/INSTALLATION.md) — source, wheel, and clean-venv installs
-- [docs/NEXUS_FIRST_RUN_CHECKLIST.md](docs/NEXUS_FIRST_RUN_CHECKLIST.md) — post-install checklist
-
-**Usage and operations**
-
-- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — every config key and environment variable
-- [docs/WORKFLOWS.md](docs/WORKFLOWS.md) — end-to-end workflows
-- [docs/NEXUS_OPERATIONS_GUIDE.md](docs/NEXUS_OPERATIONS_GUIDE.md) — deployment, GUI, backup/recovery
-- [docs/REPORTS_AND_DATABASE.md](docs/REPORTS_AND_DATABASE.md) — results layout, exports, DB backup
-- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — diagnostics and common errors
-
-**Technical reference**
-
-- [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) — all commands and flags
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — component/data-flow diagram and repo structure
-- [docs/SUPPORT_STATUS.md](docs/SUPPORT_STATUS.md) — support status + documentation inventory
-- [docs/RELEASE_READINESS.md](docs/RELEASE_READINESS.md) — release sign-off checklist
-- [docs/PHASES.md](docs/PHASES.md) — phase registry reference
-- [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) — built-in vs. optional external tools
-- [docs/SKILLS_REFERENCE.md](docs/SKILLS_REFERENCE.md) — NEMESIS skill files
-- [docs/NEXUS_DEPENDENCY_MATRIX.md](docs/NEXUS_DEPENDENCY_MATRIX.md) — Python deps and external tools
-
-**AI and security**
-
-- [docs/AI_AND_NEMESIS.md](docs/AI_AND_NEMESIS.md) — provider setup and no-AI behavior
-- [docs/SECURITY.md](docs/SECURITY.md) — enforcement matrix and safe-use policy
-- [docs/HOOKS.md](docs/HOOKS.md) — secret scanning and the pre-commit hook
-- [SECURITY.md](SECURITY.md) — vulnerability disclosure policy
-
-**Historical records**
-
-- [docs/releases/](docs/releases/) — past pass, release-candidate, and review reports
-
-## Testing, contributing, license, and support
+The default suite is offline and deterministic (no network, no live credentials). The opt-in
+real-browser job is separate:
 
 ```powershell
-python -m pytest tests -q -p no:cacheprovider
+python scripts/run_browser_tests.py
 ```
 
-- **Real-browser tests (optional):** `tests/integration/test_pass4_browser_real.py`
-  needs Playwright + Chromium and is skipped otherwise. Run it with
-  `pip install playwright && playwright install chromium`, then
-  `python scripts/run_browser_tests.py` — or the manual **browser** GitHub Actions
-  workflow. See [docs/NEXUS_DEPENDENCY_MATRIX.md](docs/NEXUS_DEPENDENCY_MATRIX.md) §4.
-- **Issues / PRs:** <https://github.com/0xShadowVoid/NEXUS_FRAMEWORK>
-- **License:** custom permission-based (not an OSI-approved open-source license) — see [LICENSE](LICENSE)
-- **Security policy:** [SECURITY.md](SECURITY.md)
+See [TESTING.md](docs/TESTING.md) for the test layout, browser prerequisites, and CI jobs, and
+[CONTRIBUTING.md](docs/CONTRIBUTING.md) for conventions and the pull-request checklist.
+
+## Project status
+
+- **Version:** 2.0.2 “Apex” (`VERSION`, `pyproject.toml`).
+- **Stability:** assessed **stable for maintenance** — see
+  [docs/releases/NEXUS_STABILITY_REPORT.md](docs/releases/NEXUS_STABILITY_REPORT.md).
+- **Readiness evidence:** [RELEASE_READINESS.md](docs/RELEASE_READINESS.md) ·
+  [SUPPORT_STATUS.md](docs/SUPPORT_STATUS.md).
+- **Roadmap history:** [ROADMAP.md](docs/ROADMAP.md) (historical) and
+  [FEATURE_MAP.md](docs/FEATURE_MAP.md).
+
+## License & acknowledgements
+
+Released under the [MIT License](LICENSE). NEXUS orchestrates open-source security tools and
+does not bundle them; each tool keeps its own license and rules of engagement. Built on the
+work of the security community — use it responsibly and only where you are authorized.

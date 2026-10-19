@@ -1,9 +1,10 @@
 # Phase Reference
 
-Phases are declared in `core/phase_registry.py`. The default plan (every `hunt`) runs the four
-core phases; optional phases run only when their gates are satisfied (profile, scope kind,
-explicit enablement). Each phase is attributed per finding/evidence via the canonical
-`EVIDENCE_PHASES` set.
+Phases are declared in `core/phase_registry.py`. Every `hunt` runs the four core security
+phases in order (`discover` → `probe` → `verify` → `analyze`) and then generates the report
+(`report`, phase group `core`). Optional phases run only when their gates are satisfied
+(profile, scope kind, explicit enablement). Each phase is attributed per finding/evidence via
+the canonical `EVIDENCE_PHASES` set.
 
 ## Core plan (default path)
 
@@ -13,7 +14,7 @@ explicit enablement). Each phase is attributed per finding/evidence via the cano
 | 20 | `probe` | `phases.probe.probe_orchestrator:run_probe` | Web vulnerability testing via the ToolRegistry (external tools optional) | findings + raw evidence |
 | 30 | `verify` | `phases.verify.verify_orchestrator:run_verify` | Deterministic verification of findings (marker/behavior checks) | lifecycle transitions |
 | 40 | `analyze` | `phases.analyze.analyze_orchestrator:run_analyze` | Dedup, severity, false-positive filtering, chain detection, persistence | final finding set |
-| 90 | `report` | `core.reporter:write_report` | Report + export generation | `results/<target>/<scan>/`, SARIF/JSON |
+| 90 | `report` | `core.reporter:write_report` | Report + export generation | `results/<domain>-<platform>-<type>-<scope>-<date>-<time>/`, SARIF/JSON |
 
 ## Optional plan (gated)
 

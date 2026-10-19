@@ -113,7 +113,8 @@ limitation, not a defect.
 ## 9. Post-release stability review (Task 29)
 
 Sections 0–8 record the **`2.0.2` release gate** at commit `c41ee6e` (tag `v2.0.2`),
-which is immutable history. The current tree (`995c095`) was re-verified afterwards:
+which is immutable history. The current baseline (`e15c19c`, Task 29) was re-verified
+afterwards:
 
 - Full suite (default): **1081 passed, 11 skipped, 0 failed — 84%** (the 11 skips are
   the optional Playwright browser tests; the count grew from 1064 via regression tests

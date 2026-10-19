@@ -33,7 +33,7 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 - `batch FILE [--concurrent N] [--sequential]` — scan targets from a text file (one per line).
 - `hunt-schedule [NAME] [--list | --daily TARGET | --weekly TARGET | --every-6h TARGET | --cron EXPR --target T | --name S]` — manage schedules executed by `serve` (`--cron` requires `--target`).
 - `hunt-new [--enable | --disable]` — first-blood auto-hunt toggle/status (Phase 4).
-- `dork TARGET [--intents LIST] [--engines LIST]` — multi-engine Google-dorking (engines off unless configured).
+- `dork TARGET [--intents LIST] [--engines LIST]` — multi-engine Google-dorking (default engines: `duckduckgo` + `github`; override with `--engines`).
 
 ### Findings & evidence
 - `verify FINDING_ID` — manually mark a finding verified.
@@ -72,7 +72,7 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 - `ai-providers` — list AI providers, capabilities and verified/supported status.
 - `ai-runtime [--provider NAME]` — probe a local model runtime (Ollama / OpenAI-compatible) for connection and installed models.
 - `ai-set-key --provider openai|glm|deepseek|gemini|kimi|openrouter|custom --key KEY` — store an AI key (multi-key failover pool).
-- `zap [--health] [--capabilities] [--passive URL | --active URL --authorize-active] [--domain D] [--import-scan ID] [--mock]` — drive the OWASP ZAP adapter through the guarded, scope-checked framework (see [ADAPTERS.md](ADAPTERS.md)).
+- `zap [--health] [--capabilities] [--passive URL | --active URL --authorize-active] [--domain D] [--import-scan ID] [--collect] [--timeout S] [--poll S] [--mock]` — drive the OWASP ZAP adapter through the guarded, scope-checked framework (see [ADAPTERS.md](ADAPTERS.md)).
 - `burp [--health] [--capabilities] [--issue-definitions] [--active URL --authorize-active] [--scan-id ID] [--domain D] [--import-scan ID] [--collect] [--timeout S] [--poll S] [--mock]` — drive the Burp Suite Professional adapter (Pro REST API) through the same guarded, scope-checked framework (see [ADAPTERS.md](ADAPTERS.md)).
 - `caido [--health] [--capabilities] [--introspect] [--findings] [--requests] [--reporter NAME] [--httpql Q] [--limit N] [--import-scan ID] [--domain D] [--mock]` — read findings/HTTP history from a Caido instance's GraphQL API (read-only; see [ADAPTERS.md](ADAPTERS.md)).
 - `mcp [--list] [--config-check] [--server NAME] [--status | --tools | --call TOOL [--arg k=v]...] [--authorize-active] [--domain D] [--mock]` — drive external MCP servers through the guarded, scope-checked client (disabled by default; see [MCP.md](MCP.md)).
@@ -84,6 +84,7 @@ Shared scan flags (accepted by `hunt`; several also by `batch`):
 
 ## Optional integrations
 
-Cloud checks (`phases.cloud`), browser automation (`nemesis.browser`), MCP (`nemesis.mcp`),
-C2 bots, and AI providers are inactive until configured. Absent optional SDKs/tools never
-block the CLI — affected phases/tools report `skipped`/`missing` instead.
+Cloud checks (`phases.cloud`), browser automation (`nemesis.browser`), MCP (top-level
+`mcp.enabled`; `nemesis.mcp` is **not** the client switch), C2 bots, and AI providers are
+inactive until configured. Absent optional SDKs/tools never block the CLI — affected
+phases/tools report `skipped`/`missing` instead.

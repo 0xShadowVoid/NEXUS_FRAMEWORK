@@ -52,8 +52,8 @@ python -m nexus hunt lab.local --skip-tools sqlmap      # everything except sqlm
 ## 6. Interpret findings and generated reports
 
 - Console: per-phase summary with finding counts by severity.
-- `results/<target>/<scan-id>/` — per-scan artifacts (`cloud.json`/`network.json` snapshots
-  when those phases ran, plus reports).
+- `results/<domain>-<platform>-<type>-<scope>-<date>-<time>/` — per-scan artifacts
+  (`cloud.json`/`network.json` snapshots when those phases ran, plus reports).
 - `nexus.db` — queryable findings/evidence; export instead of poking the DB when possible:
 
 ```powershell
@@ -119,7 +119,7 @@ python -m nexus retention --days 30   # report old scan folders (no deletion)
 ## 12. Program scope import
 
 ```powershell
-python -m nexus scope-sync --domain example.com --file scope.txt --platform hackerone --dry-run
-python -m nexus scope-sync --domain example.com --file scope.txt --platform hackerone
+python -m nexus scope-sync --domain example.com --file scope.json --platform hackerone --dry-run
+python -m nexus scope-sync --domain example.com --file scope.json --platform hackerone
 python -m nexus monitor --file programs.json
 ```

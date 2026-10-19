@@ -16,7 +16,7 @@ Each scan folder (`results/<domain>-<platform>-<type>-<scope>-<date>-<time>/`) c
 `reports/` (rendered Markdown as `*-findings.md`, plus `drafts/`), `cloud/cloud.json`,
 `network/network.json`, and `screenshots/` when enabled.
 
-## Database schema (v4, additive migrations)
+## Database schema (v5, additive migrations)
 
 Core tables: `scans`, `findings` (with lifecycle state), `evidence` (sanitized, source- and
 phase-attributed), `assets` (+ `evidence_assets` linkage), `finding_transitions` (lifecycle
