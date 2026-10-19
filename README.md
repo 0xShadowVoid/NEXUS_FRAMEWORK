@@ -293,6 +293,11 @@ Common symptoms and fixes: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 python -m pytest tests -q -p no:cacheprovider
 ```
 
+- **Real-browser tests (optional):** `tests/integration/test_pass4_browser_real.py`
+  needs Playwright + Chromium and is skipped otherwise. Run it with
+  `pip install playwright && playwright install chromium`, then
+  `python scripts/run_browser_tests.py` — or the manual **browser** GitHub Actions
+  workflow. See [docs/NEXUS_DEPENDENCY_MATRIX.md](docs/NEXUS_DEPENDENCY_MATRIX.md) §4.
 - **Issues / PRs:** <https://github.com/0xShadowVoid/NEXUS_FRAMEWORK>
 - **License:** custom permission-based (not an OSI-approved open-source license) — see [LICENSE](LICENSE)
 - **Security policy:** [SECURITY.md](SECURITY.md)

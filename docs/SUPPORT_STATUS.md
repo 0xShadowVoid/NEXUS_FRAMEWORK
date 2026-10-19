@@ -94,7 +94,7 @@ automated test → `unverified`).
 | AI HTTP providers | `lib/ai_analyzer.py` | supported (offline) | `unverified` against live provider APIs |
 | OpenCode / Cline | `lib/ai_providers.py` | **unavailable** | rejected where validated (`nemesis.agents`); see [AI_AND_NEMESIS.md](AI_AND_NEMESIS.md) |
 | Cloud posture (AWS/Azure/GCP) | `phases/cloud/` | partial | `unverified` — needs cloud credentials |
-| Browser automation | `lib/` (Playwright) | partial | `tests/integration/test_pass4_browser_real.py` (skips without a browser) |
+| Browser automation | `lib/` (Playwright) | partial | `tests/integration/test_pass4_browser_real.py` (skips without a browser); run for real via the opt-in `browser` CI workflow or `scripts/run_browser_tests.py` |
 
 ## Docker & packaging
 

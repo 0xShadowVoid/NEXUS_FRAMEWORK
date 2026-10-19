@@ -153,7 +153,8 @@ NEXUS_FRAMEWORK/
 ├─ docs/                     # all documentation (see SUPPORT_STATUS.md inventory)
 ├─ tests/                    # unit / integration / e2e (offline, deterministic)
 ├─ results/ exports/ logs/ browser-artifacts/   # git-ignored output
-└─ .github/workflows/ci.yml  # CI: pytest+coverage, self-scan, secret scan, hook lint
+└─ .github/workflows/        # ci.yml (push/PR: pytest+coverage, scans, hook lint,
+                             #          docker build) + browser.yml (manual, Playwright)
 ```
 
 ## Design principles

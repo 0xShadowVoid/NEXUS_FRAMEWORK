@@ -1,0 +1,41 @@
+name: browser
+
+# Opt-in real-browser verification (Playwright + Chromium).
+#
+# This workflow is intentionally NOT part of the default push/PR CI: the
+# default `test` and `docker` jobs stay lightweight and never require
+# Playwright. Trigger it manually from the Actions tab, or with:
+#
+#     gh workflow run browser.yml
+#
+# It fails if any of the real-browser integration tests skip because
+# Playwright/Chromium is unavailable (see scripts/run_browser_tests.py).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Install Playwright and Chromium (with system dependencies)
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+          python -c "import importlib.metadata as m; print('playwright', m.version('playwright'))"
+      - name: Run the real-browser integration tests (fail on any skip)
+        run: python scripts/run_browser_tests.py
