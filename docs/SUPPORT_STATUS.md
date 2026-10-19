@@ -127,7 +127,7 @@ automated test → `unverified`).
 | [GETTING_STARTED.md](GETTING_STARTED.md) | Step-by-step first scan |
 | [BEGINNER_GUIDE.md](BEGINNER_GUIDE.md) | Gentler walkthrough |
 | [INSTALLATION.md](INSTALLATION.md) | Source/wheel/clean-venv installs |
-| [NEXUS_FIRST_RUN_CHECKLIST.md](NEXUS_FIRST_RUN_CHECKLIST.md) | Post-install checklist (1060 tests) |
+| [NEXUS_FIRST_RUN_CHECKLIST.md](NEXUS_FIRST_RUN_CHECKLIST.md) | Post-install checklist (1081 tests) |
 | [CONFIGURATION.md](CONFIGURATION.md) | Every config key + env var |
 | [CLI_REFERENCE.md](CLI_REFERENCE.md) | All commands and flags |
 | [WORKFLOWS.md](WORKFLOWS.md) | End-to-end workflows |
@@ -149,4 +149,5 @@ automated test → `unverified`).
 | [SKILLS_REFERENCE.md](SKILLS_REFERENCE.md) | NEMESIS skill files |
 | [SUPPORT_STATUS.md](SUPPORT_STATUS.md) | **This page** |
 | [RELEASE_READINESS.md](RELEASE_READINESS.md) | Release-readiness checklist |
+| [releases/NEXUS_STABILITY_REPORT.md](releases/NEXUS_STABILITY_REPORT.md) | Post-release stability review + maintenance policy |
 | [../SECURITY.md](../SECURITY.md) | Vulnerability disclosure policy (distinct from docs/SECURITY.md) |

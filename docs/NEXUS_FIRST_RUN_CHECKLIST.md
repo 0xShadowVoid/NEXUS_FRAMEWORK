@@ -23,4 +23,7 @@ Follow this checklist to verify correct installation, configuration, and operati
     ```powershell
     python -m pytest tests -q -p no:cacheprovider
     ```
-    *(Expected outcome: 1060 passed, 11 skipped, 0 failed).*
+    *(Expected outcome: 1081 passed, 11 skipped, 0 failed). The 11 skips are the
+    optional Playwright browser tests; install the browser backend and run
+    `scripts/run_browser_tests.py` to execute them — see
+    [NEXUS_DEPENDENCY_MATRIX.md](NEXUS_DEPENDENCY_MATRIX.md) §4.*
